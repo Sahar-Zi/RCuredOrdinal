@@ -449,7 +449,7 @@ ordcuredfit <- function(formula.c, formula.a, equal.effect=NULL, Tau, R, delta, 
               trace = solution$trace))
 }
 
-ordcuredfit.param <- function(survform, cureform, formula.a, formula.e, formula.b, formula.c, equal.effect=NULL, Tau, R, delta, data, outcome.model=c("PO","ACAT"), var = var) {
+ordcuredfit.param <- function(survform, cureform, formula.a, formula.e, formula.b, formula.c, Tau, R, delta, data, outcome.model=c("PO","ACAT"), var = var) {
   
   fit.param.Wei.full.1 <- function(data){
     
