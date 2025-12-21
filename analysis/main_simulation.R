@@ -63,10 +63,8 @@ formula.e <- as.formula(V~R+Z1+Z2)
 formula.b <- as.formula(V~1)
 formula.c <- as.formula(V~Tau+R:Tau)
 
-start <- Sys.time()
 sim <- run.sim.param(seed = seed, n = n, k = 3, par = true.params, outcome.model = v.model,
                      survform = survform, cureform = cureform, formula.a = formula.a, formula.e = formula.e,
                      formula.b = formula.b, formula.c = formula.c, equal.effect = equal.effect,
                      Tau="Tau", R="R", delta="delta", var = T,
                      replications = 400, alpha = 0.05, save.iter = T)
-print(Sys.time()-start)
