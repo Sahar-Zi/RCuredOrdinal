@@ -18,19 +18,19 @@ run_simulation <- function(
     alpha = 0.05
 ) {
   
-  ## ---- Input checks --------------------------------------
+  ## ---- Simulation-specific checks ------------------------
   
-  if (is.null(formula.a) || is.null(formula.c))
-    stop("formula.a and formula.c must be supplied")
+  if (!is.numeric(n) || length(n) != 1 || n <= 0)
+    stop("n must be a positive scalar")
   
-  if (all.vars(formula.a)[1] != all.vars(formula.c)[1])
-    stop("Response must be identical in formula.a and formula.c")
+  if (!is.numeric(replications) || replications <= 0)
+    stop("replications must be a positive integer")
   
-  if (delta %in% c(all.vars(formula.a), all.vars(formula.c)))
-    stop("delta cannot appear in model formulas")
+  if (!is.list(par))
+    stop("par must be a list of true parameters")
   
-  if (Tau %in% all.vars(formula.a))
-    stop("Tau cannot appear in formula.a")
+  if (!outcome.model %in% c("PO", "ACAT"))
+    stop("outcome.model must be 'PO' or 'ACAT'")
   
   ## ---- Initialization ------------------------------------
   
@@ -43,8 +43,7 @@ run_simulation <- function(
   naive.val <- matrix(NA, replications, k + 2)
   cc.val    <- matrix(NA, replications, k + 4)
   
-  naive.se <- cc.se <- NULL
-  ci.est <- ci.est.i <- ci.naive <- ci.cc <- NULL
+  naive.se <- cc.se <- ci.est <- ci.est.i <- ci.naive <- ci.cc <- NULL
   
   if (var) {
     naive.se <- matrix(NA, replications, k + 2)
@@ -55,13 +54,14 @@ run_simulation <- function(
     ci.cc    <- matrix(NA, replications, k + 4)
   }
   
-  seeds <- seed + seq_len(replications) - 1
+  i <- 1
+  seeds <- c()
   
   ## ---- Simulation loop -----------------------------------
   
-  for (i in seq_len(replications)) {
+  while(i <= replications){
     
-    set.seed(seeds[i])
+    set.seed(seed + i - 1)
     
     dat <- gen.demo.data(
       n = n,
@@ -90,6 +90,8 @@ run_simulation <- function(
     
     if (is.null(fit)) next
     
+    seeds <- c(seeds, seed + i)
+    
     est.val[i, ]   <- unlist(fit$par)
     naive.val[i, ] <- unlist(fit$naive[, "Estimate"])
     cc.val[i, ]    <- unlist(fit$cc[, "Estimate"])
@@ -111,12 +113,14 @@ run_simulation <- function(
         c(unlist(par$c)[1:(k - 1)], unlist(par$e), unlist(par$c)[k:length(par$c)])
       )
     }
+    
+    i <- i + 1
   }
   
   ## ---- Summaries -----------------------------------------
   
   out <- list(
-    seed = seeds,
+    seeds = seeds,
     true.params = par,
     est.values = est.val,
     naive.est.values = naive.val,
@@ -251,7 +255,7 @@ run.sim.param <- function(seed = 2212308, n, k, par, outcome.model = c("PO","ACA
     
     est <- tryCatch({
       ordcuredfit.param(survform = survform, cureform = cureform, formula.a = formula.a, formula.e = formula.e,
-                        formula.b = formula.b, formula.c = formula.c, equal.effect = equal.effect,
+                        formula.b = formula.b, formula.c = formula.c,
                   Tau = Tau, R = R, delta = delta, data = dat, outcome.model = outcome.model, var = var)},
       error = function(e) {
         message("Error at replication ", rep.i, ": ", e$message) 

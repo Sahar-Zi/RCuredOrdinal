@@ -28,9 +28,11 @@ V.betaZ  <- c("V.beta.Z1"  = -2, "V.beta.Z2"  = 0)
 V.gammaZ <- c("V.gamma.Z1" = -2, "V.gamma.Z2" = 0)
 V.etaZ   <- c("V.eta.Z1"   = -2, "V.eta.Z2"   = 0)
 
-V.alpha.R <- -1.5
-V.beta.R  <-  1
-V.gamma.T <- -2
+V.alpha.R  <- -1.5
+V.beta.R   <-  1
+V.eta.R    <-  1
+V.gamma.R  <-  1
+V.gamma.T  <- -2
 V.gamma.TR <- 1.5
 
 true.params <- list(
@@ -39,7 +41,7 @@ true.params <- list(
   shape = T.shape,
   scale = T.scale,
   a = c(V.alpha0, "V.alpha.R" = V.alpha.R, V.alphaZ),
-  e = c("V.eta.R" = V.beta.R, V.etaZ),
+  e = c("V.eta.R" = V.eta.R, V.etaZ),
   b = V.beta0,
   c = c(V.gamma0,
         "V.gamma.Tau" = V.gamma.T,
@@ -64,7 +66,7 @@ formula.c <- V ~ Tau + R:Tau
 
 ## ---- Run simulation --------------------------------------
 
-sim <- run.sim.param(
+sim <- run_simulation(
   seed = seed,
   n = n,
   k = 3,
@@ -80,10 +82,11 @@ sim <- run.sim.param(
   R = "R",
   delta = "delta",
   var = TRUE,
-  replications = replications,
-  alpha = alpha,
-  save.iter = FALSE
+  replications = 2,
+  alpha = alpha
 )
+
+#summaries <- build_summary_tables(sim) Need to fix it
 
 # saveRDS(sim, file = "results/simulation_main.rds")
 # write.csv(sim$summary.table.est, "results/summary_est.csv")
