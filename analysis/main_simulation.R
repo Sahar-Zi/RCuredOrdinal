@@ -11,12 +11,12 @@ source("analysis//_setup.R")
 ## ---- True parameters -------------------------------------
 
 ## D parameters
-D.b <- c(0.5, 0, 1.5)
+D.b <- c("b.0" = 0.5, "b.Z1" = 0, "b.Z2" = 1.5)
 
 ## T parameters
 T.scale <- 1
 T.shape <- 4.5
-T.b <- c(-0.55, 0)
+T.b <- c("zeta.Z1" = -0.55, "zeta.Z2" = 0)
 
 ## V parameters
 V.alpha0 <- c("V.alpha.1" = -1, "V.alpha.2" = 1)
@@ -28,18 +28,20 @@ V.betaZ  <- c("V.beta.Z1"  = -2, "V.beta.Z2"  = 0)
 V.gammaZ <- c("V.gamma.Z1" = -2, "V.gamma.Z2" = 0)
 V.etaZ   <- c("V.eta.Z1"   = -2, "V.eta.Z2"   = 0)
 
-V.alpha.R <- -1.5
-V.beta.R  <-  1
-V.gamma.T <- -2
+V.alpha.R  <- -1.5
+V.beta.R   <-  1
+V.eta.R    <-  1
+V.gamma.R  <-  1
+V.gamma.T  <- -2
 V.gamma.TR <- 1.5
 
 true.params <- list(
   d     = D.b,
   Tau   = T.b,
-  shape = T.shape,
-  scale = T.scale,
+  Tau.shape = T.shape,
+  Tau.scale = T.scale,
   a = c(V.alpha0, "V.alpha.R" = V.alpha.R, V.alphaZ),
-  e = c("V.eta.R" = V.beta.R, V.etaZ),
+  e = c("V.eta.R" = V.eta.R, V.etaZ),
   b = V.beta0,
   c = c(V.gamma0,
         "V.gamma.Tau" = V.gamma.T,
@@ -49,7 +51,7 @@ true.params <- list(
 ## ---- Simulation settings ---------------------------------
 
 n <- 2000
-replications <- 1
+replications <- 2
 alpha <- 0.05
 
 outcome.model <- "ACAT"   # "PO" or "ACAT"
@@ -64,7 +66,7 @@ formula.c <- V ~ Tau + R:Tau
 
 ## ---- Run simulation --------------------------------------
 
-sim <- run.sim.param(
+sim <- run_simulation(
   seed = seed,
   n = n,
   k = 3,
@@ -79,11 +81,12 @@ sim <- run.sim.param(
   Tau = "Tau",
   R = "R",
   delta = "delta",
-  var = TRUE,
+  var = T,
   replications = replications,
-  alpha = alpha,
-  save.iter = FALSE
+  alpha = alpha
 )
+
+#summaries <- build_summary_tables(sim) Need to fix it
 
 # saveRDS(sim, file = "results/simulation_main.rds")
 # write.csv(sim$summary.table.est, "results/summary_est.csv")

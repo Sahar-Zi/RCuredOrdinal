@@ -95,7 +95,7 @@ variance.est <- function(est, outcome.model = c("PO", "ACAT"), data, survform, c
     a <- par[length(par)-1]
     k <- par[length(par)]
     
-    v.probs <- estimate.outcome.probabilities(
+    v.probs <- compute_outcome_probs(
       par  = par.list,
       data = data,  # single row to df
       delta = delta, k = k.levels, outcome.model = outcome.model)
