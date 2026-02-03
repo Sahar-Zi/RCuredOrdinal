@@ -71,7 +71,7 @@ negloglik_stage2 <- function(
   ## ---- extract observed category probabilities ----
   y <- data[[response]]
   idx <- cbind(seq_len(nrow(data)), y)
-  
+
   p_D0 <- probs$D0[idx]  # P(Y | delta = 0)
   p_D1 <- probs$D1[idx]  # P(Y | delta = 1)
   

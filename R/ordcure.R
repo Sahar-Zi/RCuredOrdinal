@@ -328,17 +328,56 @@ build_initial_parameters <- function(nc, formulas, outcome.model, k) {
   b.par <- extract_params(nc$cc[, "Estimate"], formulas$b, TRUE,  "beta")
   c.par <- extract_params(nc$cc[, "Estimate"], formulas$c, TRUE,  "gamma")
   
-  par <- c(a.par, e.par, b.par, c.par)
   lengths <- c(length(a.par), length(e.par), length(b.par), length(c.par))
   
+  ## ---- PO reparameterization ----
+  if (outcome.model == "PO" && k > 2) {
+    
+    ## a (alpha)
+    a.par[seq_len(k - 1)] <- c(
+      a.par[1],
+      diff(a.par[seq_len(k - 1)])
+    )
+    
+    ## b (beta)
+    b.par[seq_len(k - 1)] <- c(
+      b.par[1],
+      diff(b.par[seq_len(k - 1)])
+    )
+    
+    ## c (gamma)
+    c.par[seq_len(k - 1)] <- c(
+      c.par[1],
+      diff(c.par[seq_len(k - 1)])
+    )
+  }
+  
+  ## ---- combine parameters ----
+  par <- c(a.par, e.par, b.par, c.par)
+  
+  ## ---- lower bounds ----
   lower.b <- rep(-Inf, length(par))
   
   if (outcome.model == "PO" && k > 2) {
-    idx <- function(i) seq_len(k - 1) + i
-    par[idx(0)] <- diff(par[seq_len(k - 1)])
+    
+    ## alpha block
+    idx.a <- seq_len(k - 1)
+    lower.b[idx.a] <- c(-Inf, rep(0, k - 2))
+    
+    ## beta block
+    idx.b <- lengths[1] + lengths[2] + seq_len(k - 1)
+    lower.b[idx.b] <- c(-Inf, rep(0, k - 2))
+    
+    ## gamma block
+    idx.c <- lengths[1] + lengths[2] + lengths[3] + seq_len(k - 1)
+    lower.b[idx.c] <- c(-Inf, rep(0, k - 2))
   }
   
-  list(par = par, lengths = lengths, lower = lower.b)
+  list(
+    par = par,
+    lengths = lengths,
+    lower = lower.b
+  )
 }
 
 # ordcure() fits an ordinal regression model with a cured fraction and a parametric survival component, 
@@ -386,7 +425,7 @@ ordcure <- function(
     outcome.model, k
   )
   print("---- build initial end ----")
-  
+  print(init)
   # ---- optim ----
   init$par
   print("---- optim start ----")
@@ -405,9 +444,10 @@ ordcure <- function(
   )
   print("---- optim end ----")
   l <- init$lengths
-
+  
+  print((length(attr(terms(survform), "term.labels"))+2):length(stage1$par))
   par.list <- list(d = stage1$par[0:length(attr(terms(cureform), "term.labels"))+1],
-                   Tau = stage1$par[(length(attr(terms(survform), "term.labels"))+2):length(stage1$par)],
+                   Tau = stage1$par[(length(attr(terms(cureform), "term.labels"))+2):length(stage1$par)],
                    a = opt$par[1:l[1]],
                    e = if(l[2]>0) opt$par[(l[1]+1):(l[1]+l[2])] else NULL,
                    b = opt$par[(l[1]+l[2]+1):(l[1]+l[2]+l[3])],

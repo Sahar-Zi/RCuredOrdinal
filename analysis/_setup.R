@@ -23,6 +23,9 @@ library(smcure)
 library(dplyr)
 library(numDeriv)
 library(matrixStats)
+library(forcats)
+library(emmeans)
+library(ggplot2)
 
 ## ---- Source core functions -------------------------------
 

@@ -8,7 +8,7 @@
 
   for (j in seq_along(terms)) {
     vars <- strsplit(terms[j], ":", fixed = TRUE)[[1]]
-    X[, j] <- Reduce(`*`, data[, vars, drop = FALSE])
+    X[, j] <- apply(data[, vars, drop = FALSE], 1, prod)
   }
   
   X
