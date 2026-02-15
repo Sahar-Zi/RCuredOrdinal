@@ -43,35 +43,53 @@ X$delta <- X$THR
 # Make sure it's still ordered
 X$sf36_RP <- ordered(X$sf36_RP, levels = sort(unique(X$sf36_RP)))
 
-X$sf36_RP <- fct_collapse(
-  X$sf36_RP,
-  "25-75" = c(levels(X$sf36_RP)[2], levels(X$sf36_RP)[3], levels(X$sf36_RP)[4])
-)
+# Collapse three middle levels
+X$sf36_RP <- fct_collapse(X$sf36_RP, "25-75" = c(levels(X$sf36_RP)[2:4]))
 
 ## --------------------------------------------------
-## Run model
+## Fit model
 ## --------------------------------------------------
+
+## ---- Global constants ----
+OUTCOME_MODEL <- "ACAT"   # "PO" or "ACAT"
+AGE_THR_FIXED <- 35
+
+K <- n_distinct(X$sf36_RP)
+cureform <- THR ~ sex
+survform <- age.THR ~ sex + unilateral + diag_age6_7 + diag_age8_11 + 
+  diag_age11 + chPtrt.surgery + chPtrt.activity.restrict + sex:unilateral
+formula.a <- sf36_RP ~ age
+formula.b <- sf36_RP ~ age
+formula.c <- sf36_RP ~ age + age.THR
+formula.e <- sf36_RP ~ sex + dysplasia + unilateral + chPtrt.surgery + chPtrt.activity.restrict + sex:age
+
+cat("--------------------------------\n",OUTCOME_MODEL,"outcome regression model")
 
 fit <- ordcure(
-  cureform   = THR ~ sex,
-  survform   = age.THR ~ sex + unilateral + diag_age6_7 + diag_age8_11 + 
-    diag_age11 + chPtrt.surgery + chPtrt.activity.restrict + sex * unilateral,
-  formula.a  = sf36_RP ~ age,
-  formula.e  = sf36_RP ~ sex + dysplasia + unilateral + chPtrt.surgery + chPtrt.activity.restrict + sex:age,
-  formula.b  = sf36_RP ~ age,
-  formula.c  = sf36_RP ~ age + age.THR,
+  cureform   = cureform,
+  survform   = survform,
+  formula.a  = formula.a,
+  formula.e  = formula.e,
+  formula.b  = formula.b,
+  formula.c  = formula.c,
   Tau        = "age.THR",
   R          = "age",
   delta      = "THR",
   data       = X,
-  outcome.model = "ACAT",
+  outcome.model = OUTCOME_MODEL,
   var = TRUE
 )
 
-print(fit$opt$value)
-print(cbind("par.est" = unlist(fit$par.list), 
+cat("negative log-loikelihood=",fit$opt$value,"\n")
+print(data.frame("par.est" = unlist(fit$par.list), 
             "sandwich.se" = sqrt(diag(fit$variance$stacked.v.est)),
-            "Z" = abs(unlist(fit$par.list)/sqrt(diag(fit$variance$stacked.v.est)))))
+            "Z" = abs(unlist(fit$par.list)/sqrt(diag(fit$variance$stacked.v.est))),
+            "p-value" = round(dnorm(abs(unlist(fit$par.list)/sqrt(diag(fit$variance$stacked.v.est)))),3),
+            "95% CI" = paste("[",round(unlist(fit$par.list) - qnorm(0.975) * sqrt(diag(fit$variance$stacked.v.est)),3),", ", 
+                         round(unlist(fit$par.list) + qnorm(0.975) * sqrt(diag(fit$variance$stacked.v.est)),3),"]",sep = ""),
+            check.names = F))
+             
+print("--------------------------------")
 
 
 sf36_levels <- levels(X$sf36_RP)
@@ -82,7 +100,7 @@ pred.df1 <- expand.grid(
 ) %>%
   arrange(THR, age) %>%
   mutate(
-    age.THR = 35,  # or consider updating this based on `THR`
+    age.THR = AGE_THR_FIXED, 
     sex = 1,
     dysplasia = 0,
     unilateral = 0,
@@ -98,8 +116,8 @@ v.probs.est <- compute_outcome_probs(
   par           = fit$par,
   data          = pred.df1,
   delta         = "delta",
-  k             = 3,
-  outcome.model = "ACAT"
+  k             = K,
+  outcome.model = OUTCOME_MODEL
 )
 
 pred.df1$phi <- NA
@@ -122,7 +140,7 @@ pred_naive$Method <- "Naive"
 
 ## CC
 pred_cc <- pred.df1 %>% filter(THR == 1) 
-# mod.cc <- polr(sf36_RP ~ age + age.THR + sex + dysplasia + unilateral + chPtrt.surgery + chPtrt.activity.restrict + sex:age, data = X %>% filter(THR == 1))
+#mod.cc <- polr(sf36_RP ~ age + age.THR + sex + dysplasia + unilateral + chPtrt.surgery + chPtrt.activity.restrict + sex:age, data = X %>% filter(THR == 1))
 mod.cc <- vglm(sf36_RP ~ age + age.THR + sex + dysplasia + unilateral + chPtrt.surgery + chPtrt.activity.restrict + sex:age, acat(reverse = FALSE, parallel = TRUE), data = X %>% filter(THR == 1))
 cc_probs <- predict(mod.cc, newdata = pred_cc, type = "response")
 pred_cc$phi <- cc_probs[cbind(1:nrow(pred_cc), pred_cc$sf36_RP)]
@@ -331,69 +349,72 @@ grad_a <- function(alpha, a, k) {
     grad <- c(
       d_alpha_1 = -(e1 + e2) / D^2,
       d_alpha_2 = -e2 / D^2,
-      d_alpha_age = - a * (e1 + 2 * e2) / D^2)
+      d_alpha_age = - (a * e1 + 2 * a * e2) / D^2)
   }
   if(k==2){
     grad <- c(
       d_alpha_1 = e1 / D^2,
-      d_alpha_2 = -(e1*e2) / D^2,
-      d_alpha_age = a * ((e1 / D) - (e1 * (e1 + 2 * e2) / D^2)))
+      d_alpha_2 = -(e1 * e2) / D^2,
+      d_alpha_age = a * (e1 - e1 * e2) / D^2)
   }
   if(k==3){
     grad <- c(
       d_alpha_1 = e2 / D^2,
-      d_alpha_2 = (e2 / D^2) * (1 - (e2 / D^2)),
-      d_alpha_age = a * ((2 * e2 / D) - (e2 * (e1 + 2 * e2) / D^2)))
+      d_alpha_2 = (e2 + (e1 * e2)) / D^2,
+      d_alpha_age = (a * e1 * e2 + 2 * a * e2) / D^2)
   }
   
   return(grad)
 }
 
-grad_g <- function(alpha, x1, x2, k) {
-  a1 <- alpha[1]
-  a2 <- alpha[2]
-  b1 <- alpha[3]
-  b2 <- alpha[4]
+grad_g <- function(gamma, age, age.THR, sex, sex.age, k) {
+  a1 <- gamma[1]
+  a2 <- gamma[2]
+  b1 <- gamma[3]
+  b2 <- gamma[4]
+  b3 <- gamma[5]
+  b4 <- gamma[6]
   
-  eta1 <- a1 + b1 * x1 + b2 * x2
-  eta2 <- a1 + a2 + 2 * (b1 * x1 + b2 * x2)
+  eta1 <- a1 + b1 * age + b2 * age.THR + b3 * sex + b4 * sex.age
+  eta2 <- a1 + a2 + 2 * (b1 * age + b2 * age.THR + b3 * sex + b4 * sex.age)
   
   e1 <- exp(eta1)
   e2 <- exp(eta2)
   
   D <- 1 + e1 + e2
   
-  if (k == 1) {
+  if(k==1){
     grad <- c(
-      d_alpha_1 = -(e1 + e2) / D^2,
-      d_alpha_2 = -e2 / D^2,
-      d_beta_1  = -x1 * (e1 + 2 * e2) / D^2,
-      d_beta_2  = -x2 * (e1 + 2 * e2) / D^2
-    )
+      d_1 = -(e1 + e2) / D^2,
+      d_2 = -e2 / D^2,
+      d_age = -age * (e1 + 2 * e2) / D^2,
+      d_age.THR = -age.THR * (e1 + 2 * e2) / D^2,
+      d_sex = -sex * (e1 + 2 * e2) / D^2,
+      d_sex.age = -sex.age * (e1 + 2 * e2) / D^2)
   }
-  
-  if (k == 2) {
+  if(k==2){
     grad <- c(
-      d_alpha_1 = e1 / D^2,
-      d_alpha_2 = -(e1 * e2) / D^2,
-      d_beta_1  = x1 * ((e1 / D) - (e1 * (e1 + 2 * e2) / D^2)),
-      d_beta_2  = x2 * ((e1 / D) - (e1 * (e1 + 2 * e2) / D^2))
-    )
+      d_1 = e1 / D^2,
+      d_2 = -(e1 * e2) / D^2,
+      d_age = age * (e1 - e1 * e2) / D^2,
+      d_age.THR = age.THR * (e1 - e1 * e2) / D^2,
+      d_sex = sex * (e1 - e1 * e2) / D^2,
+      d_sex.age = sex.age * (e1 - e1 * e2) / D^2)
   }
-  
-  if (k == 3) {
+  if(k==3){
     grad <- c(
-      d_alpha_1 = e2 / D^2,
-      d_alpha_2 = (e2 / D^2) * (1 - (e2 / D^2)),
-      d_beta_1  = x1 * ((2 * e2 / D) - (e2 * (e1 + 2 * e2) / D^2)),
-      d_beta_2  = x2 * ((2 * e2 / D) - (e2 * (e1 + 2 * e2) / D^2))
-    )
+      d_1 = e2 / D^2,
+      d_2 = (e2 + (e1 * e2)) / D^2,
+      d_age = age * (e1 * e2 + 2 * e2) / D^2,
+      d_age.THR = age.THR * (e1 * e2 + 2 * e2) / D^2,
+      d_sex = sex * (e1 * e2 + 2 * e2) / D^2,
+      d_sex.age = sex.age * (e1 * e2 + 2 * e2) / D^2)
   }
   
   return(grad)
 }
 
-v.a <- fit$variance$stacked.v.est[13:15,13:15]
+v.a <- vcov(mod.naive)
 for (i in 1:nrow(pred_naive)) {
   if (i %% 3 == 1) {
     gr.a <- grad_a(fit$par.list$a, a = pred_naive$age[i], k = 1)
@@ -409,14 +430,14 @@ for (i in 1:nrow(pred_naive)) {
 }
 colnames(naive.df.plot) <- c("age", "sf36_RP", "prob", "SE", "df", "asymp.LCL", "asymp.UCL")
 
-v.g <- fit$variance$stacked.v.est[25:28,25:28]
+v.g <- vcov(mod.cc)[c(1:5,10),c(1:5,10)]
 for (i in 1:nrow(pred_cc)) {
   if (i %% 3 == 1) {
-    gr.g <- grad_g(fit$par.list$c, x1 = pred_cc$age[i], x2 = 35, k = 1)
+    gr.g <- grad_g(params[c(10:14,19)], age = pred_cc$age[i], age.THR = AGE_THR_FIXED, sex = 1, sex.age = pred_cc$age[i], k = 1)
   } else if (i %% 3 == 2) {
-    gr.g <- grad_g(fit$par.list$c, x1 = pred_cc$age[i], x2 = 35, k = 2)
+    gr.g <- grad_g(params[c(10:14,19)], age = pred_cc$age[i], age.THR = AGE_THR_FIXED, sex = 1, sex.age = pred_cc$age[i], k = 2)
   } else {
-    gr.g <- grad_g(fit$par.list$c, x1 = pred_cc$age[i], x2 = 35, k = 3)
+    gr.g <- grad_g(params[c(10:14,19)], age = pred_cc$age[i], age.THR = AGE_THR_FIXED,  sex = 1, sex.age = pred_cc$age[i], k = 3)
   }
   se <- sqrt(t(gr.g) %*% v.g %*% gr.g)
   cc.df.plot$SE[i] <- se
@@ -424,7 +445,7 @@ for (i in 1:nrow(pred_cc)) {
   cc.df.plot$asymp.UCL[i] <- pmin(1, cc.df.plot$phi[i] + qnorm(0.975) * se)
 }
 colnames(cc.df.plot) <- c("age", "sf36_RP", "prob", "SE", "df", "asymp.LCL", "asymp.UCL")
-
+cc.df.plot <- cc.df.plot %>% filter(age>=35)
 # newdata <- expand.grid(
 #   age = 35:76,
 #   age.THR = 35,
@@ -481,8 +502,6 @@ uncured.df.plot.1 <- do.call(rbind, apply(subset.uncured.1, 1, function(row) {
 colnames(uncured.df.plot.1) <- c("age", "sf36_RP", "prob", "SE", "df", "asymp.LCL", "asymp.UCL", "Method")
 #uncured.df.plot.1 <- uncured.df.plot.1 %>% mutate(sf36_RP = ifelse(is.na(sf36_RP), "(25,50,75)", sf36_RP))
 
-grad.uncured.acat(par = params, data = subset.uncured.2[14,], k=3)
-
 subset.uncured.2 <- pred.df1[pred.df1$THR == 1 & pred.df1$age > pred.df1$age.THR, -3]
 uncured.df.plot.2 <- do.call(rbind, apply(subset.uncured.2, 1, function(row) {
   data_row <- as.data.frame(lapply(as.data.frame(t(row)), as.numeric))
@@ -503,45 +522,89 @@ plot.df$sf36_RP <- factor(
   labels = c(0, "25-75", 100)
 )
 
-ggplot(plot.df, aes(x = age, y = prob, color = Method, fill = Method, group = Method, linetype = Method)) +
-  # CI shading
-  geom_ribbon(aes(ymin = asymp.LCL, ymax = asymp.UCL, fill = Method), alpha = 0.1, color = NA) +
-  # main line
-  geom_line(aes(y = prob, color = Method, linetype = Method), size = 1) +
-  # CI bounds
-  geom_line(aes(y = asymp.LCL, color = Method, linetype = Method), size = 0.5) +
-  geom_line(aes(y = asymp.UCL, color = Method, linetype = Method), size = 0.5) +
-  geom_vline(aes(xintercept = 35), linetype = "dashed", color = "black") +
-  scale_x_continuous(breaks = c(20, 30, 35, 40, 50, 60, 70),
-                     minor_breaks = c(25,35,45,55,65)) +
-  scale_y_continuous(limits = c(0, 1)) +
-  facet_wrap(~ sf36_RP, ncol = 3, labeller = label_both) +
-  labs(y = "Estimated probability", x = "Age", color = "Method", fill = "Method", linetype = "Method", 
-       title = "Estimated PO Outcome Probabilities by Age\n When age of THR is 35",
-       subtitle = "in the selected model with sex:age interaction",
-       caption ="The outcome probabilities are P(sf36_RP|age.THR=35,sex=female,dysplasia=0,unilateral=0,activity.restrict=0,surgery=0)") +
-  scale_color_manual(values = c(
-    "2stage Uncured" = "red",
-    "2stage Cured"  = "blue",
-    "CC"            = "green4",
-    "Naive"         = "purple"
-  )) +
-  scale_fill_manual(values = c(
-    "2stage Uncured" = "red",
-    "2stage Cured"  = "blue",
-    "CC"            = "green4",
-    "Naive"         = "purple"
-  )) +
-  scale_linetype_manual(values = c(
-    "2stage Uncured" = "solid",
-    "2stage Cured"  = "dashed",   # small dashes
-    "CC"            = "longdash", # medium dashes
-    "Naive"         = "dotdash"   # longer dashes
-  )) +
-  theme_minimal(base_size = 14) +
+# define aesthetics
+method_cols <- c(
+  "2stage Uncured" = "red",
+  "2stage Cured"   = "blue",
+  "CC"             = "green4",
+  "Naive"          = "purple"
+)
+
+method_lty <- c(
+  "2stage Uncured" = "solid",
+  "2stage Cured"   = "dashed",
+  "CC"             = "longdash",
+  "Naive"          = "dotdash"
+)
+
+ggplot(
+  plot.df,
+  aes(age, prob, color = Method, linetype = Method)) +
+  # CI ribbon
+  geom_ribbon(
+    aes(ymin = asymp.LCL, ymax = asymp.UCL, fill = Method),
+    alpha = 0.15,
+    color = NA
+    ) +
+  # reference line
+  geom_vline(xintercept = AGE_THR_FIXED,
+             linetype = "22",
+             linewidth = 0.6,
+             colour = "grey30"
+             ) +
+  # main curve
+  geom_line(linewidth = 1.1) +
+  # CI boundaries
+  geom_line(aes(y = asymp.LCL), linewidth = 0.37, alpha = 0.4) +
+  geom_line(aes(y = asymp.UCL), linewidth = 0.37, alpha = 0.4) +
+  # axes
+  scale_x_continuous(
+    breaks = c(20, 30, 35, 40, 50, 60, 70),
+    minor_breaks = NULL
+  ) +
+  scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) +
+  # facets
+  facet_wrap(~ sf36_RP, ncol = 3, labeller = \(x) label_both(x, sep = " = ")) +
+  # manual scales (defined once above)
+  scale_color_manual(values = method_cols) +
+  scale_fill_manual(values = method_cols) +
+  scale_linetype_manual(values = method_lty) +
+  # labels
+  labs(
+    x = "Age",
+    y = "Estimated probability",
+    colour = "Method:",
+    fill = "Method:",
+    linetype = "Method:",
+    title = paste(
+      "Estimated", OUTCOME_MODEL,
+      "Outcome Probabilities by Age\nWhen age of THR is",AGE_THR_FIXED
+    )
+  ) +
+  # theme
+  theme_bw(base_size = 20) +
   theme(
-    plot.title = element_text(hjust = 0.5),
-    strip.text = element_text(size = 12),
-    legend.position = "top"
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5),
+    strip.text = element_text(size = 20, face = "bold"),
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.title = element_text(face = "bold"),
+    legend.key.width = unit(1.6, "cm"),
+    axis.line = element_line(linewidth = 0.4)
   )
 
+file_name <- sprintf(
+  "%s.Pr.ageTHR%s.with.interaction.png",
+  OUTCOME_MODEL,
+  AGE_THR_FIXED
+)
+
+ggsave(
+  filename = file_name,
+  width = 11.69,
+  height = 8.27,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)

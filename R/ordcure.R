@@ -262,8 +262,8 @@ fit_naive_cc_models <- function(
     naive.fit <- polr(formula.a, data = data0, Hess = TRUE)
     cc.fit <- polr(formula.cc, data = data1, Hess = TRUE)
     
-    est.naive <- unname(c(naive.fit$zeta, -naive.fit$coefficients))
-    est.cc <- unname(c(cc.fit$zeta, -cc.fit$coefficients))
+    est.naive <- unname(c(naive.fit$zeta, naive.fit$coefficients))
+    est.cc <- unname(c(cc.fit$zeta, cc.fit$coefficients))
     
     # Compute standard errors using vcov()
     std <- rep(0,length(est.naive))
