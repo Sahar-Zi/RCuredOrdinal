@@ -14,7 +14,7 @@
   X
 }
 
-.build_lp <- function(intercepts, slopes, data, k, prefix) {
+.build_lp <- function(intercepts, slopes, data, k, prefix, outcome.model) {
   
   n <- nrow(data)
   lp <- matrix(intercepts, n, k - 1, byrow = TRUE)
@@ -23,6 +23,8 @@
     terms <- .extract_terms(names(slopes), prefix)
     X <- .build_design(data, terms)
     B <- matrix(slopes, ncol=length(slopes), nrow = k - 1, byrow = TRUE)
+    if (outcome.model == "PO")
+      B <- -B
     lp <- lp + X %*% t(B)
   }
   
@@ -62,15 +64,17 @@ compute_outcome_probs <- function(par.list,
   E <- par.list$e %||% numeric(0)
   
   ## ---- linear predictors ----
-  eta.a <- .build_lp(A$intercept, A$slope, data, k, "V.alpha")
-  eta.b <- .build_lp(B$intercept, B$slope, data, k, "V.beta")
-  eta.c <- .build_lp(C$intercept, C$slope, data, k, "V.gamma")
+  eta.a <- .build_lp(A$intercept, A$slope, data, k, "V.alpha", outcome.model)
+  eta.b <- .build_lp(B$intercept, B$slope, data, k, "V.beta" , outcome.model)
+  eta.c <- .build_lp(C$intercept, C$slope, data, k, "V.gamma", outcome.model)
   
   ## shared eta (eta parameters)
   if (length(E) > 0) {
     terms.e <- .extract_terms(names(E), "V.eta")
     X.e <- .build_design(data, terms.e)
     shared <- matrix(X.e %*% E, ncol = k-1, nrow = n, byrow = FALSE)
+    if (outcome.model == "PO")
+      shared <- -shared
     eta.b <- eta.b + shared
     eta.c <- eta.c + shared
   }
