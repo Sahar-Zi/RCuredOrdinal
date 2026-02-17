@@ -54,7 +54,10 @@ X$sf36_RP <- fct_collapse(X$sf36_RP, "25-75" = c(levels(X$sf36_RP)[2:4]))
 OUTCOME_MODEL <- "ACAT"   # "PO" or "ACAT"
 AGE_THR_FIXED <- 35
 
+<<<<<<< HEAD
 sf36_levels <- levels(X$sf36_RP)
+=======
+>>>>>>> c08abff8f3d9e699dcf011b89b1a097c97d9eaef
 K <- n_distinct(X$sf36_RP)
 cureform <- THR ~ sex
 survform <- age.THR ~ sex + unilateral + diag_age6_7 + diag_age8_11 + 
@@ -90,7 +93,11 @@ print(data.frame("par.est" = unlist(fit$par.list),
                          round(unlist(fit$par.list) + qnorm(0.975) * sqrt(diag(fit$variance$stacked.v.est)),3),"]",sep = ""),
             check.names = F))
              
+<<<<<<< HEAD
 # ----------------------- Create data grid for plots -------------------------
+=======
+print("--------------------------------")
+>>>>>>> c08abff8f3d9e699dcf011b89b1a097c97d9eaef
 
 grid.data <- expand.grid(age = seq(from = 18, to = 76, by = 0.2),
                          THR = c(0, 1),
@@ -99,6 +106,10 @@ grid.data <- expand.grid(age = seq(from = 18, to = 76, by = 0.2),
   arrange(sex, THR, age) %>%
   mutate(
     age.THR = AGE_THR_FIXED, 
+<<<<<<< HEAD
+=======
+    sex = 1,
+>>>>>>> c08abff8f3d9e699dcf011b89b1a097c97d9eaef
     dysplasia = 0,
     unilateral = 0,
     chPtrt.activity.restrict = 0,
@@ -115,7 +126,12 @@ v.probs.est <- compute_outcome_probs(
   data          = grid.data,
   delta         = "delta",
   k             = K,
+<<<<<<< HEAD
   outcome.model = OUTCOME_MODEL)
+=======
+  outcome.model = OUTCOME_MODEL
+)
+>>>>>>> c08abff8f3d9e699dcf011b89b1a097c97d9eaef
 
 grid.data$phi <- NA
 grid.data$phi[grid.data$THR==1] <- v.probs.est$D1[cbind(which(grid.data$THR==1), grid.data$sf36_RP[grid.data$THR==1])]
@@ -123,10 +139,126 @@ grid.data$phi[grid.data$THR==0] <- v.probs.est$D0[cbind(which(grid.data$THR==0),
 
 # ----------------------- Estimate naive outcome probabilities -------------------------
 
+<<<<<<< HEAD
 grid.data.naive <- grid.data %>% filter(THR == 0) 
 if(OUTCOME_MODEL == "PO"){
   mod.naive <- polr(sf36_RP ~ age, data = X %>% filter(THR == 0))
   naive.probs <- predict(mod.naive, newdata = grid.data.naive, type = "probs")
+=======
+pred.df1$phi[pred.df1$THR==0] <- v.probs.est$D0[cbind(which(pred.df1$THR==0), pred.df1$sf36_RP[pred.df1$THR==0])]
+pred.df1[pred.df1$THR==0,]
+# predicted.df.est$naive.pred <- NA
+# predicted.df.est$cc.pred <- NA
+
+## Naive
+pred_naive <- pred.df1 %>% filter(THR == 0) 
+# mod.naive <- polr(sf36_RP ~ age, data = X %>% filter(THR == 0))
+mod.naive <- vglm(sf36_RP ~ age, acat(reverse = FALSE, parallel = TRUE), data = X %>% filter(THR == 0))
+naive_probs <- predict(mod.naive, newdata = pred_naive, type = "response")
+pred_naive$phi <- naive_probs[cbind(1:nrow(pred_naive), pred_naive$sf36_RP)]
+pred_naive$Method <- "Naive"
+
+## CC
+pred_cc <- pred.df1 %>% filter(THR == 1) 
+#mod.cc <- polr(sf36_RP ~ age + age.THR + sex + dysplasia + unilateral + chPtrt.surgery + chPtrt.activity.restrict + sex:age, data = X %>% filter(THR == 1))
+mod.cc <- vglm(sf36_RP ~ age + age.THR + sex + dysplasia + unilateral + chPtrt.surgery + chPtrt.activity.restrict + sex:age, acat(reverse = FALSE, parallel = TRUE), data = X %>% filter(THR == 1))
+cc_probs <- predict(mod.cc, newdata = pred_cc, type = "response")
+pred_cc$phi <- cc_probs[cbind(1:nrow(pred_cc), pred_cc$sf36_RP)]
+pred_cc$Method <- "Complete Case"
+
+combined_df <- rbind(pred.df1, pred_naive, pred_cc)
+
+
+# ## ---- Cumulative probabilities plot
+# # Compute cumulative probabilities
+# df_plot <- combined_df %>%
+#   filter(!(Method == "Complete Case" & age < 35)) %>%
+#   group_by(Method, THR, age) %>%
+#   arrange(sf36_RP, .by_group = TRUE) %>%
+#   mutate(cum_prob = cumsum(phi)) %>%
+#   ungroup()
+# 
+# # Facet labels
+# facet_labels <- c("0" = "Cured", "1" = "Uncured")
+# 
+# # Plot
+# ggplot(df_plot, aes(x = age, y = cum_prob, color = factor(sf36_RP), linetype = Method)) +
+#   geom_line(linewidth = 1) +
+#   geom_vline(data = df_plot %>% filter(THR == 1),
+#              aes(xintercept = 35),
+#              linetype = "dashed", color = "black") +
+#   scale_x_continuous(
+#     breaks = c(20, 30, 35, 40, 50, 60, 70),
+#     minor_breaks = c(25,35,45,55,65)
+#   ) +
+#   #scale_y_continuous(limits = c(0, 1)) +
+#   facet_wrap(~ THR, ncol = 1, labeller = labeller(THR = facet_labels)) +
+#   labs(
+#     x = "Age",
+#     y = expression("Cumulative Probability of  " * phi(V)),
+#     color = "sf36_RP Score",
+#     linetype = "Method",
+#     title = "Cumulative Probabilities by Age and THR Status",
+#     subtitle = expression("Predicted from 2stage Proposed, Naive, and Complete Case models")
+#   ) +
+#   theme_minimal(base_size = 14) +
+#   theme(
+#     plot.title = element_text(hjust = 0.5),
+#     strip.text = element_text(size = 12),
+#     legend.position = "top")
+# 
+# ## ---- probability plot
+# 
+# # Filter for Complete Case age >= 35
+# probabilities_df <- combined_df %>%
+#   mutate(Method = case_when(
+#     Method == "2stage Proposed" & THR == 0 ~ "2stage Proposed D=0",
+#     Method == "2stage Proposed" & THR == 1 ~ "2stage Proposed D=1",
+#     TRUE ~ Method  # Leave other method names unchanged
+#   ))
+# 
+# df_plot <- probabilities_df %>%
+#   filter(!(Method == "Complete Case" & age < 35))
+# 
+# # Plot individual probabilities
+# ggplot(df_plot, aes(x = age, y = phi, color = Method)) +
+#   geom_line(linewidth = 1) +
+#   geom_vline(aes(xintercept = 35), linetype = "dashed", color = "black") +
+#   scale_x_continuous(
+#     breaks = c(20, 30, 35, 40, 50, 60, 70),
+#     minor_breaks = c(25,35,45,55,65)
+#   ) +
+#   scale_y_continuous(limits = c(0, 1)) +
+#   facet_wrap(~ sf36_RP, ncol = 5, labeller = label_both) +
+#   labs(
+#     x = "Age",
+#     y = expression("Probability of " * phi(V)),
+#     color = "Method",
+#     linetype = "THR",
+#     title = "Predicted Category Probabilities by Age",
+#     subtitle = "Faceted by sf36_RP level; shows both THR = 0 and THR = 1"
+#   ) +
+#   theme_minimal(base_size = 14) +
+#   theme(
+#     plot.title = element_text(hjust = 0.5),
+#     strip.text = element_text(size = 12),
+#     legend.position = "top"
+#   )
+# 
+
+###### -----------------------------------
+
+grad.cured.po <- function(par, data, k){
+  a.cvars <- NULL
+  a.inter <- par[1:(k-1)]
+  a.cvars <- par[k:length(par)]
+  mm.a <- model.matrix(as.formula(paste("~",paste(sub("V.alpha.","",names(a.cvars)),collapse="+"))), data=data)
+  xi.a <- exp(mm.a %*% t(cbind(a.inter, matrix(a.cvars, nrow = k-1, ncol = length(a.cvars), byrow=TRUE))))
+  base.g.D0 <- 1/(1+xi.a)
+  probs.0 <- cbind(1,base.g.D0)-cbind(base.g.D0,0)
+  outcome.probs <- probs.0[1,data$sf36_RP]
+  return(outcome.probs)
+>>>>>>> c08abff8f3d9e699dcf011b89b1a097c97d9eaef
 }
 if(OUTCOME_MODEL == "ACAT"){
   mod.naive <- vglm(sf36_RP ~ age, acat(reverse = FALSE, parallel = TRUE), data = X %>% filter(THR == 0))
@@ -164,6 +296,7 @@ grad_naive_cc <- function(alpha, x, k) {
   D <- 1 + exp(eta1) + exp(eta3)
   
   if(k==1){
+<<<<<<< HEAD
     if(OUTCOME_MODEL == "ACAT"){
       grad <- c(
         d_1 = -(exp(eta1) + exp(eta3)) / D^2,
@@ -197,16 +330,86 @@ grad_naive_cc <- function(alpha, x, k) {
     } else {
       grad <- c(1, 0, x) * as.vector(exp(-eta2)/(1+exp(-eta2))^2)
     }
+=======
+    grad <- c(
+      d_alpha_1 = -(e1 + e2) / D^2,
+      d_alpha_2 = -e2 / D^2,
+      d_alpha_age = - (a * e1 + 2 * a * e2) / D^2)
+  }
+  if(k==2){
+    grad <- c(
+      d_alpha_1 = e1 / D^2,
+      d_alpha_2 = -(e1 * e2) / D^2,
+      d_alpha_age = a * (e1 - e1 * e2) / D^2)
+  }
+  if(k==3){
+    grad <- c(
+      d_alpha_1 = e2 / D^2,
+      d_alpha_2 = (e2 + (e1 * e2)) / D^2,
+      d_alpha_age = (a * e1 * e2 + 2 * a * e2) / D^2)
+>>>>>>> c08abff8f3d9e699dcf011b89b1a097c97d9eaef
   }
   
   return(grad)
 }
 
+<<<<<<< HEAD
 naive.df.plot <- grid.data.naive[,c("age","sex","sf36_RP","phi")]
 naive.df.plot$df <- naive.df.plot$SE <- Inf
 v.a <- vcov(mod.naive)
 
 for (i in 1:nrow(grid.data.naive)) {
+=======
+grad_g <- function(gamma, age, age.THR, sex, sex.age, k) {
+  a1 <- gamma[1]
+  a2 <- gamma[2]
+  b1 <- gamma[3]
+  b2 <- gamma[4]
+  b3 <- gamma[5]
+  b4 <- gamma[6]
+  
+  eta1 <- a1 + b1 * age + b2 * age.THR + b3 * sex + b4 * sex.age
+  eta2 <- a1 + a2 + 2 * (b1 * age + b2 * age.THR + b3 * sex + b4 * sex.age)
+  
+  e1 <- exp(eta1)
+  e2 <- exp(eta2)
+  
+  D <- 1 + e1 + e2
+  
+  if(k==1){
+    grad <- c(
+      d_1 = -(e1 + e2) / D^2,
+      d_2 = -e2 / D^2,
+      d_age = -age * (e1 + 2 * e2) / D^2,
+      d_age.THR = -age.THR * (e1 + 2 * e2) / D^2,
+      d_sex = -sex * (e1 + 2 * e2) / D^2,
+      d_sex.age = -sex.age * (e1 + 2 * e2) / D^2)
+  }
+  if(k==2){
+    grad <- c(
+      d_1 = e1 / D^2,
+      d_2 = -(e1 * e2) / D^2,
+      d_age = age * (e1 - e1 * e2) / D^2,
+      d_age.THR = age.THR * (e1 - e1 * e2) / D^2,
+      d_sex = sex * (e1 - e1 * e2) / D^2,
+      d_sex.age = sex.age * (e1 - e1 * e2) / D^2)
+  }
+  if(k==3){
+    grad <- c(
+      d_1 = e2 / D^2,
+      d_2 = (e2 + (e1 * e2)) / D^2,
+      d_age = age * (e1 * e2 + 2 * e2) / D^2,
+      d_age.THR = age.THR * (e1 * e2 + 2 * e2) / D^2,
+      d_sex = sex * (e1 * e2 + 2 * e2) / D^2,
+      d_sex.age = sex.age * (e1 * e2 + 2 * e2) / D^2)
+  }
+  
+  return(grad)
+}
+
+v.a <- vcov(mod.naive)
+for (i in 1:nrow(pred_naive)) {
+>>>>>>> c08abff8f3d9e699dcf011b89b1a097c97d9eaef
   if (i %% 3 == 1) {
     gr.a <- grad_naive_cc(fit$par.list$a, x = grid.data.naive[i,c("age")], k = 1)
   } else if (i %% 3 == 2) {
@@ -222,6 +425,7 @@ for (i in 1:nrow(grid.data.naive)) {
 colnames(naive.df.plot) <- c("age", "sex", "sf36_RP", "prob", "SE", "df", "asymp.LCL", "asymp.UCL")
 naive.df.plot$Method <- "Naive"
 
+<<<<<<< HEAD
 # ----------------------- CI for CC -------------------------
 
 cc.df.plot <- grid.data.cc[,c("age","sex","sf36_RP","phi")]
@@ -244,13 +448,56 @@ for (i in 1:nrow(grid.data.cc)) {
                                                   AGE_THR_FIXED,                                       # Age.THR
                                                   grid.data.cc[i,"sex"], 0, 0, 0, 0,                   # Sex, dysp, uni, surg, act
                                                   grid.data.cc[i,"sex"]*grid.data.cc[i,"age"]), k = 3) # Age:Sex  
+=======
+v.g <- vcov(mod.cc)[c(1:5,10),c(1:5,10)]
+for (i in 1:nrow(pred_cc)) {
+  if (i %% 3 == 1) {
+    gr.g <- grad_g(params[c(10:14,19)], age = pred_cc$age[i], age.THR = AGE_THR_FIXED, sex = 1, sex.age = pred_cc$age[i], k = 1)
+  } else if (i %% 3 == 2) {
+    gr.g <- grad_g(params[c(10:14,19)], age = pred_cc$age[i], age.THR = AGE_THR_FIXED, sex = 1, sex.age = pred_cc$age[i], k = 2)
+  } else {
+    gr.g <- grad_g(params[c(10:14,19)], age = pred_cc$age[i], age.THR = AGE_THR_FIXED,  sex = 1, sex.age = pred_cc$age[i], k = 3)
+>>>>>>> c08abff8f3d9e699dcf011b89b1a097c97d9eaef
   }
   se <- sqrt(t(gr.g) %*% v.g %*% gr.g)
   cc.df.plot$SE[i] <- se
   cc.df.plot$asymp.LCL[i] <- pmax(0, cc.df.plot$phi[i] - qnorm(0.975) * se)
   cc.df.plot$asymp.UCL[i] <- pmin(1, cc.df.plot$phi[i] + qnorm(0.975) * se)
 }
+<<<<<<< HEAD
 colnames(cc.df.plot) <- c("age", "sex", "sf36_RP", "prob", "SE", "df", "asymp.LCL", "asymp.UCL")
+=======
+colnames(cc.df.plot) <- c("age", "sf36_RP", "prob", "SE", "df", "asymp.LCL", "asymp.UCL")
+cc.df.plot <- cc.df.plot %>% filter(age>=35)
+# newdata <- expand.grid(
+#   age = 35:76,
+#   age.THR = 35,
+#   sex = 1,
+#   dysplasia = 0,
+#   unilateral = 0,
+#   chPtrt.surgery = 0,
+#   chPtrt.activity.restrict = 0,
+#   "age:sex" = 0
+# )
+# newdata$`age:sex` <- newdata$age
+# 
+# cc.df.plot <- acat_prob_ci_df(mod.cc, newdata)
+#
+# naive.df.plot <- as.data.frame(emmeans(mod.naive, ~ sf36_RP | age,
+#                                        at = list(age = 18:76),
+#                                        mode = "prob"))
+# cc.df.plot <- as.data.frame(emmeans(mod.cc, ~ sf36_RP | age + age.THR + sex + dysplasia + unilateral + chPtrt.surgery + chPtrt.activity.restrict,
+#                                     at = list(age = 35:76,
+#                                               age.THR = 35,
+#                                               sex = 1,
+#                                               dysplasia = 0,
+#                                               unilateral = 0,
+#                                               chPtrt.surgery = 0,
+#                                               chPtrt.activity.restrict = 0),
+#                                     mode = "prob"))
+
+naive.df.plot$Method <- "Naive"
+>>>>>>> c08abff8f3d9e699dcf011b89b1a097c97d9eaef
 cc.df.plot$Method <- "CC"
 cc.df.plot <- cc.df.plot[cc.df.plot$age >= AGE_THR_FIXED,]
 
@@ -374,9 +621,13 @@ uncured.df.plot.1 <- do.call(rbind, apply(subset.uncured.1, 1, function(row) {
 })) %>% mutate(grid.data[grid.data$THR == 1 & grid.data$age < grid.data$age.THR, "sf36_RP"], .before = 3)
 colnames(uncured.df.plot.1) <- c("age", "sex", "sf36_RP", "prob", "SE", "df", "asymp.LCL", "asymp.UCL", "Method")
 
+<<<<<<< HEAD
 
 subset.uncured.2 <- grid.data[grid.data$THR == 1 & grid.data$age >= grid.data$age.THR, -4]
 variance.uncured.gamma <- fit$variance$stacked.v.est[c(25:28,16:21),c(25:28,16:21)] # The sub-matrix of the gamma parameters
+=======
+subset.uncured.2 <- pred.df1[pred.df1$THR == 1 & pred.df1$age > pred.df1$age.THR, -3]
+>>>>>>> c08abff8f3d9e699dcf011b89b1a097c97d9eaef
 uncured.df.plot.2 <- do.call(rbind, apply(subset.uncured.2, 1, function(row) {
   data_row <- as.data.frame(lapply(as.data.frame(t(row)), as.numeric))
   g.gamma <- grad(grad.uncured.2stage, x = params, data = data_row, k=3)[10:19]
@@ -443,10 +694,14 @@ ggplot(
   ) +
   scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) +
   # facets
+<<<<<<< HEAD
   facet_grid(
     sex ~ sf36_RP,
     labeller = \(x) label_both(x, sep = " = ")
   ) +
+=======
+  facet_wrap(~ sf36_RP, ncol = 3, labeller = \(x) label_both(x, sep = " = ")) +
+>>>>>>> c08abff8f3d9e699dcf011b89b1a097c97d9eaef
   # manual scales (defined once above)
   scale_color_manual(values = method_cols) +
   scale_fill_manual(values = method_cols) +
@@ -464,15 +719,24 @@ ggplot(
     )
   ) +
   # theme
+<<<<<<< HEAD
   theme_bw(base_size = 18) +
   theme(
     plot.title = element_text(hjust = 0.5, face = "bold"),
     plot.subtitle = element_text(hjust = 0.5),
     strip.text = element_text(size = 18, face = "bold"),
+=======
+  theme_bw(base_size = 20) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5),
+    strip.text = element_text(size = 20, face = "bold"),
+>>>>>>> c08abff8f3d9e699dcf011b89b1a097c97d9eaef
     legend.position = "bottom",
     legend.direction = "horizontal",
     legend.title = element_text(face = "bold"),
     legend.key.width = unit(1.6, "cm"),
+<<<<<<< HEAD
     panel.spacing = unit(1, "cm"),
     axis.line = element_line(linewidth = 0.4)
   )
@@ -493,3 +757,22 @@ ggplot(
 #   dpi = 300,
 #   bg = "white"
 # )
+=======
+    axis.line = element_line(linewidth = 0.4)
+  )
+
+file_name <- sprintf(
+  "%s.Pr.ageTHR%s.with.interaction.png",
+  OUTCOME_MODEL,
+  AGE_THR_FIXED
+)
+
+ggsave(
+  filename = file_name,
+  width = 11.69,
+  height = 8.27,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
+>>>>>>> c08abff8f3d9e699dcf011b89b1a097c97d9eaef
