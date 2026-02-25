@@ -51,7 +51,7 @@ X$sf36_RP <- fct_collapse(X$sf36_RP, "25-75" = c(levels(X$sf36_RP)[2:4]))
 ## --------------------------------------------------
 
 ## ---- Global constants ----
-OUTCOME_MODEL <- "ACAT"   # "PO" or "ACAT"
+OUTCOME_MODEL <- "PO"   # "PO" or "ACAT"
 AGE_THR_FIXED <- 35
 
 sf36_levels <- levels(X$sf36_RP)
@@ -155,13 +155,17 @@ grad_naive_cc <- function(alpha, x, k) {
   a1 <- alpha[1]
   a2 <- alpha[2]
   ax <- 0
-  if(length(alpha)>k-1) ax <- alpha[3:length(alpha)]
-
-  eta1 <- a1 + ax %*% x
-  eta2 <- a2 + ax %*% x
-  eta3 <- a1 + a2 + 2 * ax %*% x
+  if(length(alpha)>2) ax <- alpha[3:length(alpha)]
   
-  D <- 1 + exp(eta1) + exp(eta3)
+  if(OUTCOME_MODEL == "ACAT"){
+    eta1 <- a1 + ax %*% x
+    eta2 <- a2 + ax %*% x
+    eta3 <- a1 + a2 + 2 * ax %*% x
+    D <- 1 + exp(eta1) + exp(eta3)
+  } else {
+    eta1 <- a1 - ax %*% x
+    eta2 <- a2 - ax %*% x
+  }
   
   if(k==1){
     if(OUTCOME_MODEL == "ACAT"){
@@ -170,7 +174,7 @@ grad_naive_cc <- function(alpha, x, k) {
         d_2 = -exp(eta3) / D^2,
         d_x = -x * as.vector((exp(eta1) + 2 * exp(eta3)) / D^2))
     } else {
-      grad <- c(1, 0, x) * as.vector(1/(1+exp(-eta1)))
+      grad <- c(-x, 1, 0) * as.vector(exp(eta1)/(1+exp(eta1))^2)
     }
   
   }
@@ -182,9 +186,9 @@ grad_naive_cc <- function(alpha, x, k) {
         d_x = x * as.vector((exp(eta1) - exp(eta1) * exp(eta3)) / D^2))
     } else {
       grad <- c(
-        d_1 = -exp(-eta1)/(1+exp(-eta1))^2,
-        d_2 = -exp(-eta2)/(1+exp(-eta2))^2,
-        d_x = -x * as.vector((exp(-eta2)/(1+exp(-eta2))^2) - (exp(-eta2)/(1+exp(-eta2))^2))
+        d_x = x * as.vector((exp(eta1)/(1+exp(eta1))^2) - (exp(eta2)/(1+exp(eta2))^2)),
+        d_1 = -exp(eta1)/(1+exp(eta1))^2,
+        d_2 = exp(eta2)/(1+exp(eta2))^2
       )
     }
   }
@@ -195,7 +199,7 @@ grad_naive_cc <- function(alpha, x, k) {
         d_2 = (exp(eta3) + (exp(eta1) * exp(eta3))) / D^2,
         d_x = x * as.vector((exp(eta1) * exp(eta3) + 2 * exp(eta3)) / D^2))
     } else {
-      grad <- c(1, 0, x) * as.vector(exp(-eta2)/(1+exp(-eta2))^2)
+      grad <- c(-x, 0, 1) * as.vector(exp(eta2)/(1+exp(eta2))^2)
     }
   }
   
@@ -261,7 +265,7 @@ grad.cured.2stage <- function(par, data, k){
   a.inter <- par[1:(k-1)]
   a.cvars <- par[k:length(par)]
   mm.a <- model.matrix(as.formula(paste("~",paste(sub("V.alpha.","",names(a.cvars)),collapse="+"))), data=data)
-  xi.a <- mm.a %*% t(cbind(a.inter, matrix(a.cvars, nrow = k-1, ncol = length(a.cvars), byrow=TRUE)))
+  xi.a <- mm.a %*% t(cbind(a.inter, matrix(-a.cvars, nrow = k-1, ncol = length(a.cvars), byrow=TRUE)))
   if(OUTCOME_MODEL == "PO"){
     base.g.D0 <- 1/(1+exp(xi.a))
     probs.0 <- cbind(1,base.g.D0)-cbind(base.g.D0,0)
@@ -319,7 +323,7 @@ grad.uncured.2stage <- function(par, data.m, k) {
   compute_xi <- function(mm, intercept, covars) {
     coef_mat <- cbind(
       intercept,
-      matrix(covars, nrow = k - 1, ncol = length(covars), byrow = TRUE)
+      matrix(-covars, nrow = k - 1, ncol = length(covars), byrow = TRUE)
     )
     mm %*% t(coef_mat)
   }
@@ -439,7 +443,8 @@ ggplot(
   # axes
   scale_x_continuous(
     breaks = c(20, 30, 35, 40, 50, 60, 70),
-    minor_breaks = NULL
+    minor_breaks = NULL,
+    expand = c(0,0)
   ) +
   scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) +
   # facets
@@ -457,11 +462,7 @@ ggplot(
     y = "Estimated probability",
     colour = "Method:",
     fill = "Method:",
-    linetype = "Method:",
-    title = paste(
-      "Estimated", OUTCOME_MODEL,
-      "Outcome Probabilities by Age\nWhen age of THR is",AGE_THR_FIXED
-    )
+    linetype = "Method:"
   ) +
   # theme
   theme_bw(base_size = 18) +
@@ -477,19 +478,19 @@ ggplot(
     axis.line = element_line(linewidth = 0.4)
   )
 
-# # ----------------------- Save the plot -------------------------
-# 
-# file_name <- sprintf(
-#   "%s.Pr.ageTHR%s.with.interaction.png",
-#   OUTCOME_MODEL,
-#   AGE_THR_FIXED
-# )
-# 
-# ggsave(
-#   filename = file_name,
-#   width = 11.69,
-#   height = 8.27,
-#   units = "in",
-#   dpi = 300,
-#   bg = "white"
-# )
+# ----------------------- Save the plot -------------------------
+
+file_name <- sprintf(
+  "%s.est.outcome.probs(age.THR%s).png",
+  OUTCOME_MODEL,
+  AGE_THR_FIXED
+)
+
+ggsave(
+  filename = file_name,
+  width = 46,
+  height = 28,
+  units = "cm",
+  dpi = 600,
+  bg = "white"
+)
