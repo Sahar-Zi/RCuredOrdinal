@@ -83,7 +83,8 @@ run_simulation <- function(
         delta = delta,
         data = dat,
         outcome.model = outcome.model,
-        var = var
+        var = var,
+        verbose = T
       ),
       error = function(e) print(e)
     )
@@ -92,7 +93,7 @@ run_simulation <- function(
 
     seeds <- c(seeds, seed + i)
     
-    est.val[i, ]   <- unlist(fit$par)
+    est.val[i, ]   <- unlist(fit$par.list)
     naive.val[i, ] <- unlist(fit$naive[, "Estimate"])
     cc.val[i, ]    <- unlist(fit$cc[, "Estimate"])
     
@@ -132,18 +133,20 @@ run_simulation <- function(
     out$est.se.inv.values <- est.se.i
     out$CI.est <- ci.est
     out$CI.est.inv <- ci.est.i
+    out$naive.se <- naive.se
+    out$cc.se <- cc.se
     out$CI.naive <- ci.naive
     out$CI.cc <- ci.cc
   }
   
   out$summary.table.est <- summary_sim(
-    est = est.val,
-    true = unlist(par),
-    se = est.se,
-    ci = ci.est,
-    se.inv = est.se.i,
-    ci.inv = ci.est.i
-  )
+     est = est.val,
+     true = unlist(par),
+     se = est.se,
+     ci = ci.est,
+     se.inv = est.se.i,
+     ci.inv = ci.est.i
+   )
   
   out$summary.table.naive <- summary_sim(
     est = naive.val,
@@ -267,15 +270,15 @@ run.sim.param <- function(seed = 2212308, n, k, par, outcome.model = c("PO","ACA
                       "Optimization Trace:", est$trace)
     }
 
-    est.values[rep.i,] <<- est.val[rep.i,] <- unlist(est$par)
-    colnames(est.values) <<- colnames(est.val) <- names(unlist(est$par))
+    #est.values[rep.i,] <<- est.val[rep.i,] <- unlist(est$par)
+    #colnames(est.values) <<- colnames(est.val) <- names(unlist(est$par))
     naive.est.values[rep.i,] <<- naive.est.val[rep.i,] <- unlist(est$naive[,"Estimate"])
     colnames(naive.est.values) <<- colnames(naive.est.val) <- names(unlist(est$naive[,"Estimate"]))
     cc.est.values[rep.i,] <<- cc.est.val[rep.i,] <- unlist(est$cc[,"Estimate"])
     colnames(cc.est.values) <<- colnames(cc.est.val) <- names(unlist(est$cc[,"Estimate"]))
     
     log_output <- c(log_output,
-                    "Estimates:", capture.output(print(est.val[rep.i,])),
+                    #"Estimates:", capture.output(print(est.val[rep.i,])),
                     "Naive Estimates:", capture.output(print(naive.est.val[rep.i,])),
                     "Complete Case Estimates:", capture.output(print(cc.est.val[rep.i,])),"\n")
     
@@ -289,22 +292,16 @@ run.sim.param <- function(seed = 2212308, n, k, par, outcome.model = c("PO","ACA
       naive.est.se.values[rep.i,] <<- naive.est.se.val[rep.i,] <- unlist(est$naive[,"Std. Error"])
       cc.est.se.values[rep.i,] <<- cc.est.se.val[rep.i,] <- unlist(est$cc[,"Std. Error"])
       
-      colnames(est.se.values) <<- colnames(est.se.val) <- names(unlist(est$par))
-      colnames(est.se.inv.values) <<- colnames(est.se.inv.val) <- names(unlist(est$par))
+      #colnames(est.se.values) <<- colnames(est.se.val) <- names(unlist(est$par))
+      #colnames(est.se.inv.values) <<- colnames(est.se.inv.val) <- names(unlist(est$par))
       colnames(naive.est.se.values) <<- colnames(naive.est.se.val) <- names(unlist(est$naive[,"Estimate"]))
       colnames(cc.est.se.values) <<- colnames(cc.est.se.val) <- names(unlist(est$cc[,"Estimate"]))
       
-      #est.se.values[rep.i,] <<- est.se.val[rep.i,] <- runif(21,0,1)
-      #est.se.inv.values[rep.i,] <<- est.se.inv.val[rep.i,] <- runif(21,0,2)
+      #est.se.values[rep.i,] <<- est.se.val[rep.i,] <- sqrt(diag(est.cov.mat[,,rep.i] <- est$variance$stacked.v.est))
+      #est.se.inv.values[rep.i,] <<- est.se.inv.val[rep.i,] <- sqrt(diag(est.cov.inv.mat[,,rep.i] <- -est$variance$G.tilde.inv))
       
-      est.se.values[rep.i,] <<- est.se.val[rep.i,] <- sqrt(diag(est.cov.mat[,,rep.i] <- est$variance$stacked.v.est))
-      est.se.inv.values[rep.i,] <<- est.se.inv.val[rep.i,] <- sqrt(diag(est.cov.inv.mat[,,rep.i] <- -est$variance$G.tilde.inv))
-      
-      #v.est <- variance.est(est = est, outcome.model = outcome.model, data = as.data.frame(dat))
-      #est.se.values[rep.i,] <<- est.se.val[rep.i,] <- sqrt(diag(est.cov.matrix[,,rep.i] <<- v.est$stacked.v.est))
-      
-      CI.est[rep.i,] <<- ci.est[rep.i,] <- CI(est.val[rep.i,], est.se.val[rep.i,], alpha, unlist(par))
-      CI.est.inv[rep.i,] <<- ci.est.inv[rep.i,] <- CI(est.val[rep.i,], est.se.inv.val[rep.i,], alpha, unlist(par))
+      #CI.est[rep.i,] <<- ci.est[rep.i,] <- CI(est.val[rep.i,], est.se.val[rep.i,], alpha, unlist(par))
+      #CI.est.inv[rep.i,] <<- ci.est.inv[rep.i,] <- CI(est.val[rep.i,], est.se.inv.val[rep.i,], alpha, unlist(par))
       CI.naive[rep.i,] <<- ci.naive[rep.i,] <- CI(naive.est.val[rep.i,], naive.est.se.val[rep.i,], alpha, unlist(par$a))
       CI.cc[rep.i,] <<- ci.cc[rep.i,] <- CI(cc.est.val[rep.i,], cc.est.se.val[rep.i,], alpha, 
                                             c(unlist(par$c)[1:(k-1)],unlist(par$e),unlist(par$c)[k:length(par$c)]))
@@ -316,7 +313,7 @@ run.sim.param <- function(seed = 2212308, n, k, par, outcome.model = c("PO","ACA
     cat("\n----------------------------------------------\n")
   }
   
-  summary.table.est <- summary.sim(est.val, unlist(par), est.se.val, ci.est, est.se.inv.val, ci.est.inv)
+  #summary.table.est <- summary.sim(est.val, unlist(par), est.se.val, ci.est, est.se.inv.val, ci.est.inv)
   summary.table.naive <- summary.sim(naive.est.val, unlist(par$a), naive.est.se.val, ci.naive)
   summary.table.cc <- summary.sim(cc.est.val, c(unlist(par$c)[1:(k-1)],unlist(par$e),unlist(par$c)[k:length(par$c)]), cc.est.se.val, ci.cc)
   
@@ -339,6 +336,8 @@ run.sim.param <- function(seed = 2212308, n, k, par, outcome.model = c("PO","ACA
     write_out(timestamp, cc.est.val, "cc.est.vals")
     if(var){
       write_out(timestamp, est.se.val, "est.se.vals")
+      write_out(timestamp, naive.est.se.val, "naive.est.se.val")
+      write_out(timestamp, cc.est.se.val, "cc.est.se.val")
       write_out(timestamp, est.se.inv.val, "est.se.inv.val")
       write_out(timestamp, ci.est, "ci.est")
     }
@@ -361,7 +360,7 @@ run.sim.param <- function(seed = 2212308, n, k, par, outcome.model = c("PO","ACA
                 CI.naive = ci.naive, CI.cc = ci.cc,
                 seed = seeds))
   }
-  return(list(summary.table.est = summary.table.est, summary.table.naive = summary.table.naive, summary.table.cc = summary.table.cc,
+  return(list(summary.table.est = NULL, summary.table.naive = summary.table.naive, summary.table.cc = summary.table.cc,
               true.params = par, est.values = est.val,
               naive.est.values = naive.est.val, cc.est.values = cc.est.val,
               seed = seeds))

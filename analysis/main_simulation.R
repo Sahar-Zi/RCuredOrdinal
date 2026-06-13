@@ -14,8 +14,8 @@ source("analysis//_setup.R")
 D.b <- c("b.0" = 0.5, "b.Z1" = 0, "b.Z2" = 1.5)
 
 ## T parameters
-T.scale <- 1
 T.shape <- 4.5
+T.scale <- 1
 T.b <- c("zeta.Z1" = -0.55, "zeta.Z2" = 0)
 
 ## V parameters
@@ -41,9 +41,10 @@ true.params <- list(
   Tau.shape = T.shape,
   Tau.scale = T.scale,
   a = c(V.alpha0, "V.alpha.R" = V.alpha.R, V.alphaZ),
-  e = c("V.eta.R" = V.eta.R, V.etaZ),
-  b = V.beta0,
+  e = c(V.etaZ),
+  b = c(V.beta0, "V.beta.R" = V.beta.R),
   c = c(V.gamma0,
+        "V.gamma.R" = V.gamma.R,
         "V.gamma.Tau" = V.gamma.T,
         "V.gamma.R:Tau" = V.gamma.TR)
 )
@@ -60,9 +61,9 @@ outcome.model <- "ACAT"   # "PO" or "ACAT"
 cureform  <- delta ~ Z1 + Z2
 survform  <- Tau   ~ Z1 + Z2
 formula.a <- V ~ R + Z1 + Z2
-formula.e <- V ~ R + Z1 + Z2
-formula.b <- V ~ 1
-formula.c <- V ~ Tau + R:Tau
+formula.e <- V ~ Z1 + Z2
+formula.b <- V ~ R
+formula.c <- V ~ R + Tau + R:Tau
 
 ## ---- Run simulation --------------------------------------
 
@@ -86,8 +87,8 @@ sim <- run_simulation(
   alpha = alpha
 )
 
+
 #summaries <- build_summary_tables(sim) Need to fix it
 
 # saveRDS(sim, file = "results/simulation_main.rds")
-# write.csv(sim$summary.table.est, "results/summary_est.csv")
-
+#write.csv(sim$naive.se, "naive_se_ACAT.csv")
