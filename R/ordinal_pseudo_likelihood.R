@@ -1,16 +1,23 @@
 # ============================================================
-# Stage-2 pseudo log-likelihood for ordinal cure model
+# Stage-2 pseudo log-likelihood for the ordinal cure model
 # ============================================================
-# Computes the negative pseudo log-likelihood used in the
-# second-stage optimization of ordcure().
+# Computes the negative pseudo log-likelihood maximized in the
+# second stage of ordcure(). The likelihood combines:
+#   - observed outcomes (delta = 1)
+#   - mixture contributions for censored observations (delta = 0)
+# using the stage-1 cure weights.
 #
-# The likelihood combines:
-#  - observed outcomes (delta = 1)
-#  - mixture contributions for censored observations (delta = 0)
-#
-# Supports PO and ACAT ordinal outcome models.
+# Supports the PO and ACAT ordinal outcome models. All functions
+# here are internal (not exported).
 # ============================================================
 
+# Under the PO parameterization the k-1 category thresholds are
+# optimized as (first threshold, successive gaps) so that the
+# monotonicity constraint becomes a simple non-negativity bound.
+# This undoes that transform (gaps -> cumulative thresholds) for the
+# alpha (block 1), beta (block 3), and gamma (block 4) blocks. The
+# shared eta block (block 2) has no thresholds and is left untouched.
+#' @noRd
 expand_po_thresholds <- function(par, lengths, k) {
   if (k <= 2) return(par)
   
@@ -25,6 +32,9 @@ expand_po_thresholds <- function(par, lengths, k) {
   par
 }
 
+# Split the flat parameter vector into the a / e / b / c blocks.
+# `e` is NULL when there are no shared effects (lengths[2] == 0).
+#' @noRd
 unpack_stage2_parameters <- function(par, lengths) {
   
   idx <- cumsum(c(0, lengths))
@@ -37,6 +47,19 @@ unpack_stage2_parameters <- function(par, lengths) {
   )
 }
 
+#' Negative stage-2 pseudo log-likelihood
+#'
+#' @param par Flat parameter vector (a, e, b, c blocks concatenated).
+#' @param lengths Integer length-4 vector giving the size of each block.
+#' @param k Number of ordinal levels.
+#' @param delta Character name of the event-indicator column.
+#' @param response Character name of the ordinal response column.
+#' @param data A data frame.
+#' @param weights Data frame with stage-1 weights `w0`, `w1`.
+#' @param outcome.model `"PO"` or `"ACAT"`.
+#'
+#' @return Scalar negative pseudo log-likelihood.
+#' @noRd
 negloglik_stage2 <- function(
     par,
     lengths,
@@ -58,7 +81,7 @@ negloglik_stage2 <- function(
   
   ## ---- unpack parameters ----
   theta <- unpack_stage2_parameters(par_expanded, lengths)
-
+  
   ## ---- compute outcome probabilities ----
   probs <- compute_outcome_probs(
     par = theta,
@@ -71,7 +94,7 @@ negloglik_stage2 <- function(
   ## ---- extract observed category probabilities ----
   y <- data[[response]]
   idx <- cbind(seq_len(nrow(data)), y)
-
+  
   p_D0 <- probs$D0[idx]  # P(Y | delta = 0)
   p_D1 <- probs$D1[idx]  # P(Y | delta = 1)
   

@@ -51,7 +51,7 @@ X$sf36_RP <- fct_collapse(X$sf36_RP, "25-75" = c(levels(X$sf36_RP)[2:4]))
 ## --------------------------------------------------
 
 ## ---- Global constants ----
-OUTCOME_MODEL <- "PO"   # "PO" or "ACAT"
+OUTCOME_MODEL <- "ACAT"   # "PO" or "ACAT"
 AGE_THR_FIXED <- 35
 
 sf36_levels <- levels(X$sf36_RP)
@@ -265,12 +265,14 @@ grad.cured.2stage <- function(par, data, k){
   a.inter <- par[1:(k-1)]
   a.cvars <- par[k:length(par)]
   mm.a <- model.matrix(as.formula(paste("~",paste(sub("V.alpha.","",names(a.cvars)),collapse="+"))), data=data)
-  xi.a <- mm.a %*% t(cbind(a.inter, matrix(-a.cvars, nrow = k-1, ncol = length(a.cvars), byrow=TRUE)))
+  
   if(OUTCOME_MODEL == "PO"){
+    xi.a <- mm.a %*% t(cbind(a.inter, matrix(-a.cvars, nrow = k-1, ncol = length(a.cvars), byrow=TRUE)))
     base.g.D0 <- 1/(1+exp(xi.a))
     probs.0 <- cbind(1,base.g.D0)-cbind(base.g.D0,0)
   }
   if(OUTCOME_MODEL == "ACAT"){
+    xi.a <- mm.a %*% t(cbind(a.inter, matrix(a.cvars, nrow = k-1, ncol = length(a.cvars), byrow=TRUE)))
     eta.a <- cbind(1, exp(xi.a))
     out <- matrix(1, nrow(data), k)
     out[, 2:k] <- eta.a[, 2:k] * eta.a[, 1:(k - 1)]
@@ -318,19 +320,22 @@ grad.uncured.2stage <- function(par, data.m, k) {
   
   mm.b <- build_mm(par.b$covars, data.m, "V.(beta|eta).")
   mm.c <- build_mm(par.c$covars, data.m, "V.(gamma|eta).")
-  
   ## ---- helper: compute linear predictors ---------------------------------
   compute_xi <- function(mm, intercept, covars) {
-    coef_mat <- cbind(
-      intercept,
-      matrix(-covars, nrow = k - 1, ncol = length(covars), byrow = TRUE)
-    )
+    if(OUTCOME_MODEL == "PO")
+      coef_mat <- cbind(intercept,
+                        matrix(-covars, nrow = k - 1, ncol = length(covars), byrow = TRUE)
+                        )
+    if(OUTCOME_MODEL == "ACAT")
+      coef_mat <- cbind(intercept,
+                        matrix(covars, nrow = k - 1, ncol = length(covars), byrow = TRUE)
+      )
     mm %*% t(coef_mat)
   }
   
   xi.b <- compute_xi(mm.b, par.b$intercept, par.b$covars)
   xi.c <- compute_xi(mm.c, par.c$intercept, par.c$covars)
-  
+
   ## ---- switch rule --------------------------------------------------------
   delta0 <- data.m$age <= data.m$age.THR
   
@@ -462,7 +467,9 @@ ggplot(
     y = "Estimated probability",
     colour = "Method:",
     fill = "Method:",
-    linetype = "Method:"
+    linetype = "Method:",
+    title = "Estimation Outcome Probabilities Across Age - Adult Perthes' Study",
+    subtitle = "Adjacent categories model, age-at-THR fixed at 35, remining covariates at reference value 0"
   ) +
   # theme
   theme_bw(base_size = 18) +
@@ -471,7 +478,7 @@ ggplot(
     plot.subtitle = element_text(hjust = 0.5),
     strip.text = element_text(size = 18, face = "bold"),
     legend.position = "bottom",
-    legend.direction = "horizontal",
+    legend.direction = "horizontal",L
     legend.title = element_text(face = "bold"),
     legend.key.width = unit(1.6, "cm"),
     panel.spacing = unit(1, "cm"),
@@ -480,17 +487,17 @@ ggplot(
 
 # ----------------------- Save the plot -------------------------
 
-file_name <- sprintf(
-  "%s.est.outcome.probs(age.THR%s).png",
-  OUTCOME_MODEL,
-  AGE_THR_FIXED
-)
+#file_name <- sprintf(
+#  "%s.est.outcome.probs(age.THR%s).png",
+#  OUTCOME_MODEL,
+#  AGE_THR_FIXED
+#)
 
-ggsave(
-  filename = file_name,
-  width = 46,
-  height = 28,
-  units = "cm",
-  dpi = 600,
-  bg = "white"
-)
+#ggsave(
+#  filename = file_name,
+#  width = 46,
+#  height = 28,
+#  units = "cm",
+#  dpi = 600,
+#  bg = "white"
+#)
