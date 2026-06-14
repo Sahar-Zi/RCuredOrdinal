@@ -1,21 +1,21 @@
 ############################################################
 ## Simulation utilities
-## Ordinal Cure Model with Censored Covariates
 ############################################################
 
-validate_sim_inputs <- function(seed, n, k, replication, par,
+# Validate the inputs to run_simulation(). Internal to the analysis scripts.
+validate_sim_inputs <- function(seed, n, k, replications, par,
                                 outcome.model, survform, cureform,
                                 formula.a, formula.b, formula.c, formula.e,
                                 Tau, R, delta, var, alpha) {
   
-  ## Simulation control
+  ## simulation control
   if (!is.null(seed) &&
       (!is.numeric(seed) || length(seed) != 1 || seed < 0))
     stop("seed must be a non-negative numeric scalar or NULL")
   
-  if (!is.numeric(replication) || replication <= 0 ||
-      replication != as.integer(replication))
-    stop("replication must be a positive integer")
+  if (!is.numeric(replications) || replications <= 0 ||
+      replications != as.integer(replications))
+    stop("replications must be a positive integer")
   
   if (!is.numeric(n) || n <= 0 || n != as.integer(n))
     stop("n must be a positive integer")
@@ -23,160 +23,135 @@ validate_sim_inputs <- function(seed, n, k, replication, par,
   if (n < 30)
     warning("n is very small; ordinal cure models may be unstable")
   
-  if (!is.numeric(k) || length(k) != 1 ||
-      k < 2 || k != as.integer(k))
+  if (!is.numeric(k) || length(k) != 1 || k < 2 || k != as.integer(k))
     stop("k must be an integer >= 2")
   
-  ## Model choice
+  ## model choice
   if (!outcome.model %in% c("PO", "ACAT"))
-    stop("outcome model must be either 'PO' or 'ACAT'")
+    stop("outcome.model must be either 'PO' or 'ACAT'")
   
-  ## True parameters
+  ## true parameters
   if (!is.list(par))
     stop("par must be a list")
   
   if (any(!is.finite(unlist(par))))
     stop("par contains non-finite values")
   
-  if (!all(sapply(par, is.numeric)))
+  if (!all(vapply(par, is.numeric, logical(1))))
     stop("all elements of par must be numeric vectors")
   
-  required_blocks <- c("a", "b", "c", "d", "e", "Tau", "shape", "scale")
-  
-  missing_blocks <- setdiff(required_blocks, names(par))
+  required_blocks <- c("a", "b", "c", "d", "e", "Tau", "Tau.shape", "Tau.scale")
+  missing_blocks  <- setdiff(required_blocks, names(par))
   if (length(missing_blocks) > 0)
-    stop("par is missing components: ",
-         paste(missing_blocks, collapse = ", "))
+    stop("par is missing components: ", paste(missing_blocks, collapse = ", "))
   
-  ## Formulas
-  formulas <- list(survform, cureform, formula.a,
-                   formula.b, formula.c, formula.e)
-  
-  if (!all(sapply(formulas, inherits, "formula")))
+  ## formulas
+  formulas <- list(survform, cureform, formula.a, formula.b, formula.c, formula.e)
+  if (!all(vapply(formulas, inherits, logical(1), what = "formula")))
     stop("All model formulas must be formula objects")
   
-  ## Estimation options
+  ## estimation options
   if (!is.logical(var) || length(var) != 1)
     stop("var must be TRUE or FALSE")
   
   if (var && (!is.numeric(alpha) || alpha <= 0 || alpha >= 1))
     stop("alpha must be in (0,1) when var = TRUE")
   
-  ## Variable names
-  if (!all(sapply(list(Tau, R, delta),
-                  function(x) is.character(x) && length(x) == 1)))
+  ## variable names
+  if (!all(vapply(list(Tau, R, delta),
+                  function(x) is.character(x) && length(x) == 1, logical(1))))
     stop("Tau, R, delta must be single character strings")
   
   invisible(TRUE)
 }
 
-
+# Coverage indicator: TRUE when the true value lies in the Wald CI.
 CI_indicator <- function(est, se, alpha, true)
   abs(est - true) <= qnorm(1 - alpha / 2) * se
 
-summary_sim <- function(
-    est,
-    true,
-    se = NULL,
-    ci = NULL,
-    se.inv = NULL,
-    ci.inv = NULL
-) {
+# Per-parameter summary across replications: average estimate, bias,
+# empirical SD, and (when supplied) mean SE and empirical coverage.
+summary_sim <- function(est, true, se = NULL, ci = NULL,
+                        se.inv = NULL, ci.inv = NULL) {
   
   avg  <- colMeans(est)
   bias <- true - avg
   SD   <- colSds(est)
   
   out <- data.frame(
-    true = true,
-    avg = avg,
-    bias = bias,
-    SD = SD
+    true = true, avg = avg, bias = bias, SD = SD,
+    row.names = names(true),
+    check.names = FALSE
   )
   
   if (!is.null(se)) {
-    out$`SE-sandwich` <- colMeans(se)
-    out$`CP-sandwich` <- colMeans(ci)
+    out[["SE-sandwich"]] <- colMeans(se)
+    out[["CP-sandwich"]] <- colMeans(ci)
   }
   
   if (!is.null(se.inv)) {
-    out$`SE-inv` <- colMeans(se.inv)
-    out$`CP-inv` <- colMeans(ci.inv)
+    out[["SE-inv"]] <- colMeans(se.inv)
+    out[["CP-inv"]] <- colMeans(ci.inv)
   }
   
   out
 }
 
 # --------------------------------------------------
-# Build aligned summary tables for simulation output
+# Combined summary table with relative efficiency
 # --------------------------------------------------
-
+# Aligns the proposed estimator's per-parameter SEs against the naive
+# and complete-case (CC) estimators and reports relative efficiency
+#   RE = Var(competitor) / Var(proposed),
+# so RE > 1 favors the proposed estimator. The naive estimator only
+# covers the alpha (V.alpha.*) block; the CC estimator covers the
+# gamma/eta (V.gamma.* / V.eta.*) blocks; first-stage and beta
+# parameters have no competitor and are left as NA.
+#
+# Requires a simulation run with var = TRUE.
 build_summary_tables <- function(sim) {
   
   est   <- sim$summary.table.est
   naive <- sim$summary.table.naive
   cc    <- sim$summary.table.cc
   
-  # ---- add parameter column ----
-  est$param   <- rownames(est)
-  naive$param <- rownames(naive)
-  cc$param    <- rownames(cc)
+  if (!"SE-sandwich" %in% colnames(est))
+    stop("build_summary_tables() needs a run with var = TRUE")
   
-  # ---- helper: map eta -> gamma ----
-  map_eta_to_gamma <- function(p) {
-    sub("^e\\.V\\.eta\\.", "V.gamma.", p)
+  ## bare parameter key (strip the leading block prefix: a. b. c. e. d. Tau.)
+  key    <- sub("^[A-Za-z]+\\.", "", rownames(est))
+  se_est <- est[["SE-sandwich"]]
+  
+  ## look up a competitor table by key, aligned to est's rows
+  lookup <- function(tab, eligible) {
+    se <- cp <- rep(NA_real_, nrow(est))
+    hit <- eligible & key %in% rownames(tab)
+    se[hit] <- tab[key[hit], "SE-sandwich"]
+    cp[hit] <- tab[key[hit], "CP-sandwich"]
+    list(se = se, cp = cp)
   }
   
-  cc_lookup <- cc
-  rownames(cc_lookup) <- cc_lookup$param
+  nv <- lookup(naive, grepl("^V\\.alpha\\.", key))
+  cv <- lookup(cc,    grepl("^V\\.(gamma|eta)\\.", key))
   
-  # ---- initialize CC columns in est ----
-  est$RE     <- NA
-  
-  for (i in seq_len(nrow(est))) {
-    
-    p_est <- est$param[i]
-    
-    if (grepl("^e\\.V\\.eta\\.", p_est)) {
-      
-      p_cc <- map_eta_to_gamma(p_est)
-      
-      if (p_cc %in% rownames(cc_lookup)) {
-        
-        est[p, "avg"] <- cc[p_cc, "avg"]
-        est[p, "SE"]  <- cc[p_cc, "SE"]
-        est[p, "CP"]  <- cc[p_cc, "CP"]
-        
-        # Relative efficiency: Var(CC) / Var(EST)
-        est[p, "RE"] <- (cc[p_cc, "SE"]^2) /
-          (est[p, "SE.sandwich"]^2)
-      }
-    }
-  }
-  
-  # ---- naive alignment (row names already match) ----
-  naive_out <- naive
-  colnames(naive_out) <- paste0(colnames(naive_out), "_naive")
-  
-  # ---- split first-stage vs second-stage ----
-  first_stage_idx <- grepl("^(d|Tau|shape|scale)", rownames(est))
-  
-  est_first  <- est[first_stage_idx, ]
-  est_second <- est[!first_stage_idx, ]
-  
-  # ---- final column order ----
-  est_cols <- c(
-    "true", "avg", "bias", "SD",
-    "SE-sandwich", "SE-inv",
-    "CP-sandwich", "CP-inv", "RE"
+  base_cols <- intersect(
+    c("true", "avg", "bias", "SD", "SE-sandwich", "SE-inv", "CP-sandwich", "CP-inv"),
+    colnames(est)
   )
+  out <- est[, base_cols, drop = FALSE]
   
-  est_first  <- est_first[, est_cols]
-  est_second <- est_second[, est_cols]
+  out[["SE-naive"]] <- nv$se
+  out[["CP-naive"]] <- nv$cp
+  out[["RE-naive"]] <- (nv$se / se_est)^2
+  out[["SE-cc"]]    <- cv$se
+  out[["CP-cc"]]    <- cv$cp
+  out[["RE-cc"]]    <- (cv$se / se_est)^2
   
-  return(list(
-    est_first_stage  = est_first,
-    est_second_stage = est_second,
-    naive            = naive_out
-  ))
+  ## split first-stage from second-stage parameters for readability
+  first_stage <- grepl("^(d|Tau)\\.", rownames(out))
+  
+  list(
+    first_stage  = out[first_stage, , drop = FALSE],
+    second_stage = out[!first_stage, , drop = FALSE]
+  )
 }

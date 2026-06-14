@@ -40,8 +40,7 @@ invisible(lapply(file.path("R", core_files), source))
 ## simulation drivers (analysis side)
 sim_files <- c(
   "simulation_utils.R",
-  "run_simulation.R",
-  "main_simulation.R"
+  "run_simulation.R"
 )
 invisible(lapply(file.path("analysis", sim_files), source))
 

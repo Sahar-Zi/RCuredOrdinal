@@ -18,10 +18,10 @@ gen_demo_data <- function(n, k, par, outcome.model = c("PO", "ACAT")) {
   ## 1. Generate baseline covariates
   ## ============================================================
   z0 <- 1
-  u <- runif(n, 0, 1)
+  u  <- runif(n, 0, 1)
   z1 <- runif(n, 0, 1)
-  z2 <- (z1 < 0.5 & u > 2/3) + (z1 > 0.5 & u < 2/3)
-  Z <- cbind(z0,z1,z2)  # intercept included
+  z2 <- (z1 < 0.5 & u > 2 / 3) + (z1 > 0.5 & u < 2 / 3)
+  Z  <- cbind(z0, z1, z2)  # intercept included
   
   ## ============================================================
   ## 2. Cure indicator D
@@ -34,8 +34,14 @@ gen_demo_data <- function(n, k, par, outcome.model = c("PO", "ACAT")) {
   shape <- par$Tau.shape
   scale <- par$Tau.scale
   
-  linpred_T <- Z %*% c(0, par$Tau)  # no intercept
-  scale_i  <- exp(-linpred_T / shape) / scale
+  linpred_T <- Z %*% c(0, par$Tau)   # no intercept
+  
+  ## PH-Weibull: the estimator assumes
+  ##   S(t | x) = exp( -(t / scale)^shape * exp(x'beta) ),
+  ## which corresponds to drawing T ~ Weibull(shape, scale * exp(-x'beta/shape)).
+  ## (Earlier this divided by `scale`, which only matched the fitted model
+  ## when scale == 1.)
+  scale_i <- scale * exp(-linpred_T / shape)
   
   Tau_latent <- ifelse(
     D == 1,
@@ -59,9 +65,9 @@ gen_demo_data <- function(n, k, par, outcome.model = c("PO", "ACAT")) {
     }
   }
   
-  rz1 <- sapply(u, gen_age) # age distribution for Z2=1
-  rz0 <- runif(n, 0.3, 2) # age distribution for Z2=0
-  R <- ifelse(z2, rz1, rz0)
+  rz1 <- sapply(u, gen_age)    # age distribution for Z2 = 1
+  rz0 <- runif(n, 0.3, 2)      # age distribution for Z2 = 0
+  R   <- ifelse(z2, rz1, rz0)
   
   ## ============================================================
   ## 5. Observed time and event indicator
@@ -70,11 +76,11 @@ gen_demo_data <- function(n, k, par, outcome.model = c("PO", "ACAT")) {
   delta   <- as.integer(Tau_latent < R & D == 1)
   
   data <- data.frame(
-    Z1 = z1,
-    Z2 = z2,
-    D  = D,
-    Tau = Tau_obs,
-    R  = R,
+    Z1    = z1,
+    Z2    = z2,
+    D     = D,
+    Tau   = Tau_obs,
+    R     = R,
     delta = delta
   )
   
@@ -89,18 +95,18 @@ gen_demo_data <- function(n, k, par, outcome.model = c("PO", "ACAT")) {
     outcome.model = outcome.model
   )
   
-  ## cumulative probabilities
+  ## inverse-CDF sampling: cured rows (D = 0) draw from the baseline
+  ## ("alpha") probabilities D0; uncured rows (D = 1) from D1.
   Uv <- runif(n)
-  cum_probs <- lapply(probs, function(df){t(apply(df, 1, cumsum))})
+  cum_probs <- lapply(probs, function(df) t(apply(df, 1, cumsum)))
   cum_probs_by_D <- cum_probs$D0
-  cum_probs_by_D[D==1,] <- cum_probs$D1[D==1,]
+  cum_probs_by_D[D == 1, ] <- cum_probs$D1[D == 1, ]
   
-  V <- sapply(1:n, function(i) {
-    which(cum_probs_by_D[i,] > Uv[i])[1]  # Find first column index where v[i,] > u[i]
+  V <- sapply(seq_len(n), function(i) {
+    which(cum_probs_by_D[i, ] > Uv[i])[1]   # first category whose CDF exceeds U
   })
-
+  
   data$V <- ordered(V)
   
   data
 }
-

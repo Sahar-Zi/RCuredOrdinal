@@ -1,24 +1,23 @@
 ############################################################
 ## Main simulation study
-## Ordinal Cure Model with Censored Covariates
-## MSc. Thesis – Sahar Ziv
+## Ordinal Cure Model with Censored Covariates in the Presence of a Cured Fraction
 ############################################################
 
-## ---- Setup ------------------------------------------------
+## ---- setup ----------------------------------------------
 
-source("analysis//_setup.R")
+source("analysis/_setup.R")
 
-## ---- True parameters -------------------------------------
+## ---- true parameters ------------------------------------
 
-## D parameters
+## D (incidence / cure) parameters
 D.b <- c("b.0" = 0.5, "b.Z1" = 0, "b.Z2" = 1.5)
 
-## T parameters
+## T (latency) parameters
 T.shape <- 4.5
 T.scale <- 1
-T.b <- c("zeta.Z1" = -0.55, "zeta.Z2" = 0)
+T.b     <- c("zeta.Z1" = -0.55, "zeta.Z2" = 0)
 
-## V parameters
+## V (ordinal outcome) parameters
 V.alpha0 <- c("V.alpha.1" = -1, "V.alpha.2" = 1)
 V.beta0  <- c("V.beta.1"  = 0,  "V.beta.2"  = 1.5)
 V.gamma0 <- c("V.gamma.1" = -2, "V.gamma.2" = 2)
@@ -33,31 +32,30 @@ V.beta.R   <-  1
 V.eta.R    <-  1
 V.gamma.R  <-  1
 V.gamma.T  <- -2
-V.gamma.TR <- 1.5
+V.gamma.TR <-  1.5
 
 true.params <- list(
-  d     = D.b,
-  Tau   = T.b,
+  d         = D.b,
+  Tau       = T.b,
   Tau.shape = T.shape,
   Tau.scale = T.scale,
   a = c(V.alpha0, "V.alpha.R" = V.alpha.R, V.alphaZ),
   e = c(V.etaZ),
   b = c(V.beta0, "V.beta.R" = V.beta.R),
   c = c(V.gamma0,
-        "V.gamma.R" = V.gamma.R,
-        "V.gamma.Tau" = V.gamma.T,
+        "V.gamma.R"     = V.gamma.R,
+        "V.gamma.Tau"   = V.gamma.T,
         "V.gamma.R:Tau" = V.gamma.TR)
 )
 
-## ---- Simulation settings ---------------------------------
+## ---- simulation settings --------------------------------
 
-n <- 2000
+n            <- 2000
 replications <- 2
-alpha <- 0.05
-
+alpha        <- 0.05
 outcome.model <- "ACAT"   # "PO" or "ACAT"
 
-## Model formulas
+## model formulas
 cureform  <- delta ~ Z1 + Z2
 survform  <- Tau   ~ Z1 + Z2
 formula.a <- V ~ R + Z1 + Z2
@@ -65,7 +63,7 @@ formula.e <- V ~ Z1 + Z2
 formula.b <- V ~ R
 formula.c <- V ~ R + Tau + R:Tau
 
-## ---- Run simulation --------------------------------------
+## ---- run ------------------------------------------------
 
 sim <- run_simulation(
   seed = seed,
@@ -82,13 +80,19 @@ sim <- run_simulation(
   Tau = "Tau",
   R = "R",
   delta = "delta",
-  var = T,
+  var = TRUE,
   replications = replications,
-  alpha = alpha
+  alpha = alpha,
+  verbose = TRUE
 )
 
+## ---- summaries ------------------------------------------
 
-#summaries <- build_summary_tables(sim) Need to fix it
+sim$summary.table.est
 
+sim$summary.table.naive
+
+sim$summary.table.cc
+
+## ---- save (optional) ------------------------------------
 # saveRDS(sim, file = "results/simulation_main.rds")
-#write.csv(sim$naive.se, "naive_se_ACAT.csv")

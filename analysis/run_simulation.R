@@ -1,97 +1,93 @@
+############################################################
+## Simulation driver
+## Ordinal Cure Model with Censored Covariates
+############################################################
+
+#' Run a Monte Carlo simulation of the ordinal cure model
+#'
+#' For each replication, generates a data set with gen_demo_data() and
+#' fits it with ordcure(). Failed replications are recorded and skipped
+#' (their seeds are reported); summaries are computed over the successful
+#' ones. Per replication the seed is `seed + i - 1`, so runs are
+#' reproducible and each replication is independent of failures elsewhere.
+#'
+#' @param seed Base seed; replication i uses `seed + i - 1`.
+#' @param n Sample size.
+#' @param k Number of ordinal categories.
+#' @param par List of true parameters (see gen_demo_data()).
+#' @param outcome.model "PO" or "ACAT".
+#' @param survform,cureform,formula.a,formula.e,formula.b,formula.c Model formulas.
+#' @param Tau,R,delta Character column names.
+#' @param var Logical; compute the sandwich variance (needed for SE/CP/RE).
+#' @param replications Number of replications.
+#' @param alpha Nominal level for coverage.
+#' @param verbose Passed to ordcure().
+#'
+#' @return A list of raw estimates, optional SE/CI matrices, and the
+#'   per-estimator summary tables.
 run_simulation <- function(
-    seed,
-    n,
-    k,
-    par,
+    seed, n, k, par,
     outcome.model = c("PO", "ACAT"),
-    survform,
-    cureform,
-    formula.a,
-    formula.e,
-    formula.b,
-    formula.c,
-    Tau,
-    R,
-    delta,
-    var = FALSE,
-    replications = 1,
-    alpha = 0.05
+    survform, cureform,
+    formula.a, formula.e, formula.b, formula.c,
+    Tau, R, delta,
+    var = FALSE, replications = 1, alpha = 0.05,
+    verbose = FALSE
 ) {
   
-  ## ---- Simulation-specific checks ------------------------
+  outcome.model <- match.arg(outcome.model)
   
-  if (!is.numeric(n) || length(n) != 1 || n <= 0)
-    stop("n must be a positive scalar")
+  validate_sim_inputs(
+    seed, n, k, replications, par, outcome.model,
+    survform, cureform, formula.a, formula.b, formula.c, formula.e,
+    Tau, R, delta, var, alpha
+  )
   
-  if (!is.numeric(replications) || replications <= 0)
-    stop("replications must be a positive integer")
-  
-  if (!is.list(par))
-    stop("par must be a list of true parameters")
-  
-  if (!outcome.model %in% c("PO", "ACAT"))
-    stop("outcome.model must be 'PO' or 'ACAT'")
-  
-  ## ---- Initialization ------------------------------------
-  
+  ## ---- storage --------------------------------------------
   p <- length(unlist(par))
   
-  est.val  <- matrix(NA, replications, p)
-  est.se   <- matrix(NA, replications, p)
-  est.se.i <- matrix(NA, replications, p)
+  est.val   <- matrix(NA_real_, replications, p)
+  naive.val <- matrix(NA_real_, replications, k + 2)
+  cc.val    <- matrix(NA_real_, replications, k + 4)
   
-  naive.val <- matrix(NA, replications, k + 2)
-  cc.val    <- matrix(NA, replications, k + 4)
+  est.se   <- est.se.i <- matrix(NA_real_, replications, p)
+  naive.se <- matrix(NA_real_, replications, k + 2)
+  cc.se    <- matrix(NA_real_, replications, k + 4)
+  ci.est   <- ci.est.i <- matrix(NA_real_, replications, p)
+  ci.naive <- matrix(NA_real_, replications, k + 2)
+  ci.cc    <- matrix(NA_real_, replications, k + 4)
   
-  naive.se <- cc.se <- ci.est <- ci.est.i <- ci.naive <- ci.cc <- NULL
+  seeds   <- integer(replications)
+  success <- logical(replications)
   
-  if (var) {
-    naive.se <- matrix(NA, replications, k + 2)
-    cc.se    <- matrix(NA, replications, k + 4)
-    ci.est   <- matrix(NA, replications, p)
-    ci.est.i <- matrix(NA, replications, p)
-    ci.naive <- matrix(NA, replications, k + 2)
-    ci.cc    <- matrix(NA, replications, k + 4)
-  }
+  ## true values for the naive / CC estimators
+  true.a  <- unlist(par$a)
+  true.cc <- c(unlist(par$c)[1:(k - 1)], unlist(par$e), unlist(par$c)[k:length(par$c)])
   
-  i <- 1
-  seeds <- c()
-  
-  ## ---- Simulation loop -----------------------------------
-  
-  while(i <= replications){
+  ## ---- replication loop -----------------------------------
+  for (i in seq_len(replications)) {
     
-    set.seed(seed + i - 1)
+    seed_i   <- seed + i - 1
+    seeds[i] <- seed_i
+    set.seed(seed_i)
     
-    dat <- gen_demo_data(
-      n = n,
-      k = k,
-      par = par,
-      outcome.model = outcome.model
-    )
+    dat <- gen_demo_data(n = n, k = k, par = par, outcome.model = outcome.model)
     
     fit <- tryCatch(
       ordcure(
-        survform = survform,
-        cureform = cureform,
-        formula.a = formula.a,
-        formula.e = formula.e,
-        formula.b = formula.b,
-        formula.c = formula.c,
-        Tau = Tau,
-        R = R,
-        delta = delta,
-        data = dat,
-        outcome.model = outcome.model,
-        var = var,
-        verbose = T
+        survform = survform, cureform = cureform,
+        formula.a = formula.a, formula.e = formula.e,
+        formula.b = formula.b, formula.c = formula.c,
+        Tau = Tau, R = R, delta = delta, data = dat,
+        outcome.model = outcome.model, var = var, verbose = verbose
       ),
-      error = function(e) print(e)
+      error = function(e) {
+        message("replication ", i, " (seed ", seed_i, ") failed: ",
+                conditionMessage(e))
+        NULL
+      }
     )
-
     if (is.null(fit)) next
-
-    seeds <- c(seeds, seed + i)
     
     est.val[i, ]   <- unlist(fit$par.list)
     naive.val[i, ] <- unlist(fit$naive[, "Estimate"])
@@ -100,269 +96,70 @@ run_simulation <- function(
     if (var) {
       est.se[i, ]   <- sqrt(diag(fit$variance$stacked.v.est))
       est.se.i[i, ] <- sqrt(diag(-fit$variance$G.tilde.inv))
-      
       naive.se[i, ] <- unlist(fit$naive[, "Std. Error"])
       cc.se[i, ]    <- unlist(fit$cc[, "Std. Error"])
       
-      ci.est[i, ]   <- CI_indicator(est.val[i, ], est.se[i, ], alpha, unlist(par))
+      ci.est[i, ]   <- CI_indicator(est.val[i, ], est.se[i, ],   alpha, unlist(par))
       ci.est.i[i, ] <- CI_indicator(est.val[i, ], est.se.i[i, ], alpha, unlist(par))
-      ci.naive[i, ] <- CI_indicator(naive.val[i, ], naive.se[i, ], alpha, unlist(par$a))
-      ci.cc[i, ]    <- CI_indicator(
-        cc.val[i, ],
-        cc.se[i, ],
-        alpha,
-        c(unlist(par$c)[1:(k - 1)], unlist(par$e), unlist(par$c)[k:length(par$c)])
-      )
+      ci.naive[i, ] <- CI_indicator(naive.val[i, ], naive.se[i, ], alpha, true.a)
+      ci.cc[i, ]    <- CI_indicator(cc.val[i, ], cc.se[i, ],     alpha, true.cc)
     }
     
-    i <- i + 1
+    success[i] <- TRUE
   }
   
-  ## ---- Summaries -----------------------------------------
+  ## ---- failure accounting ---------------------------------
+  n_ok <- sum(success)
+  if (n_ok == 0) stop("all replications failed")
+  if (n_ok < replications)
+    warning(replications - n_ok, " of ", replications, " replications failed")
   
+  keep <- success
+  sub  <- function(M) M[keep, , drop = FALSE]
+  
+  ## ---- raw output -----------------------------------------
   out <- list(
-    seeds = seeds,
-    true.params = par,
-    est.values = est.val,
-    naive.est.values = naive.val,
-    cc.est.values = cc.val
+    seeds          = seeds,
+    success        = success,
+    n_replications = replications,
+    n_success      = n_ok,
+    true.params    = par,
+    est.values       = sub(est.val),
+    naive.est.values = sub(naive.val),
+    cc.est.values    = sub(cc.val)
   )
   
   if (var) {
-    out$est.se.values <- est.se
-    out$est.se.inv.values <- est.se.i
-    out$CI.est <- ci.est
-    out$CI.est.inv <- ci.est.i
-    out$naive.se <- naive.se
-    out$cc.se <- cc.se
-    out$CI.naive <- ci.naive
-    out$CI.cc <- ci.cc
+    out$est.se.values     <- sub(est.se)
+    out$est.se.inv.values <- sub(est.se.i)
+    out$CI.est            <- sub(ci.est)
+    out$CI.est.inv        <- sub(ci.est.i)
+    out$naive.se          <- sub(naive.se)
+    out$cc.se             <- sub(cc.se)
+    out$CI.naive          <- sub(ci.naive)
+    out$CI.cc             <- sub(ci.cc)
   }
   
+  ## ---- summaries ------------------------------------------
   out$summary.table.est <- summary_sim(
-     est = est.val,
-     true = unlist(par),
-     se = est.se,
-     ci = ci.est,
-     se.inv = est.se.i,
-     ci.inv = ci.est.i
-   )
+    est    = sub(est.val), true = unlist(par),
+    se     = if (var) sub(est.se)   else NULL,
+    ci     = if (var) sub(ci.est)   else NULL,
+    se.inv = if (var) sub(est.se.i) else NULL,
+    ci.inv = if (var) sub(ci.est.i) else NULL
+  )
   
   out$summary.table.naive <- summary_sim(
-    est = naive.val,
-    true = unlist(par$a),
-    se = naive.se,
-    ci = ci.naive
+    est = sub(naive.val), true = true.a,
+    se  = if (var) sub(naive.se) else NULL,
+    ci  = if (var) sub(ci.naive) else NULL
   )
   
   out$summary.table.cc <- summary_sim(
-    est = cc.val,
-    true = c(unlist(par$c)[1:(k - 1)], unlist(par$e), unlist(par$c)[k:length(par$c)]),
-    se = cc.se,
-    ci = ci.cc
+    est = sub(cc.val), true = true.cc,
+    se  = if (var) sub(cc.se) else NULL,
+    ci  = if (var) sub(ci.cc) else NULL
   )
   
   out
 }
-
-
-run.sim.param <- function(seed = 2212308, n, k, par, outcome.model = c("PO","ACAT"),
-                    survform, cureform, formula.a, formula.e, formula.b, formula.c, 
-                    Tau, R, delta, var = var,
-                    replications = 1, alpha = 0.05, save.iter = FALSE){
-  
-  timestamp <- format(Sys.time(), "%Y%m%d-%H%M%S")
-  
-  CI <- function(est.values, est.se.values, alpha, true.par){
-    l <- est.values - qnorm(1 - alpha / 2) * est.se.values
-    u <- est.values + qnorm(1 - alpha / 2) * est.se.values
-    return((true.par >= l) & (true.par <= u))
-  }
-  
-  summary.sim <- function(est.values, true.par, est.se.values, CI.est, est.se.inv.values = NULL, CI.est.inv = NULL){
-    names(true.par) <- names(est.values)
-    avg <- colMeans(est.values)
-    bias <- true.par - avg
-    SD <- colSds(est.values)
-    names(bias) <- names(avg)
-    if(!is.na(est.se.values[1,1])){
-      SE <- colMeans(est.se.values)
-      CP <- colMeans(CI.est)
-      if(!is.null(est.se.inv.values)){
-        SE.inv <- colMeans(est.se.inv.values)
-        CP.inv <- colMeans(CI.est.inv)
-        return(data.frame(true = true.par, avg, bias, SD, 
-                          "SE-sandwich" = SE, "SE-inv" = SE.inv, "CP-sandwich" = CP, "CP-inv" = CP.inv))
-      }
-      return(data.frame(true = true.par, avg, bias, SD, SE, CP))
-    }
-    
-    return(data.frame(true = true.par, avg, bias, SD))
-  }
-  
-  # ---- Check the formulas only for the simulation, there are the same checks in the ordercuredfit
-  if(is.null(formula.a) || is.null(formula.c) 
-     || identical(as.character(formula.a), "") || identical(as.character(formula.c), "")){stop("one or both of the models is empty")}
-  
-  if(all.vars(formula.a)[1] != all.vars(formula.c)[1]){stop("response must be the same for both models")}
-  
-  if(delta %in% c(all.vars(formula.a), all.vars(formula.c))){stop("delta cannot be in the models")}
-  
-  if(Tau %in% all.vars(formula.a)){stop("Tau cannot be in model.a, it is not defined for the uncured fraction")}
-  # ----
-  
-  p <- length(unlist(par)) # Would change to -1 after using the weibull cure model
-  seeds <<- data.frame(matrix(NA, nrow = replications, ncol = 1))
-  colnames(seeds) <<- c("Seed")
-  replication.errors <- 0
-  
-  est.values <<- est.val <- matrix(NA, nrow = replications, ncol = p)
-  naive.est.values <<- naive.est.val <- matrix(NA, nrow = replications, ncol = k + 2)
-  cc.est.values <<- cc.est.val <- matrix(NA, nrow = replications, ncol = k + 4)
-  
-  est.cov.mat <<- array(NA, dim = c(p, p, replications))
-  est.cov.inv.mat <<- array(NA, dim = c(p, p, replications))
-  est.se.values <<- est.se.val <- matrix(NA, nrow = replications, ncol = p)
-  est.se.inv.values <<- est.se.inv.val <- matrix(NA, nrow = replications, ncol = p)
-  naive.est.se.values <<- naive.est.se.val <- matrix(NA, nrow = replications, ncol = k + 2)
-  cc.est.se.values <<- cc.est.se.val <- matrix(NA, nrow = replications, ncol = k + 4)
-
-  CI.est <<- ci.est <- matrix(NA, nrow = replications, ncol = p)
-  CI.est.inv <<- ci.est.inv <- matrix(NA, nrow = replications, ncol = p)
-  CI.naive <<- ci.naive <- matrix(NA, nrow = replications, ncol = k+2)
-  CI.cc <<- ci.cc <- matrix(NA, nrow = replications, ncol = k+4)
-  
-  rep.i <- 1
-  seed.c <- seed
-  
-  if (save.iter) {
-    log_file <- paste0("LOG-Simulation-", "-", timestamp, "-rep=", replications,
-                       "-n=", n, "-v.model=", outcome.model, ".txt")
-  }
-  
-  cat("\n----------------------------------------------\n")
-  while(rep.i < replications + 1){
-    
-    log_output <- capture.output({
-      cat("\n----------------------------------------------\n")
-      cat(paste("Replication number", rep.i, "\n"))
-    })
-    
-    seeds[rep.i,1] <<- seed.c
-    set.seed(seed.c)
-    seed.c <- seed.c + 1
-    
-    cat(paste("Replication number", rep.i, "is Running...\n"))
-
-    dat <- gen.demo.data(n = n, k = k, par = par, outcome.model = outcome.model)
-    
-    est <- tryCatch({
-      ordcuredfit.param(survform = survform, cureform = cureform, formula.a = formula.a, formula.e = formula.e,
-                        formula.b = formula.b, formula.c = formula.c,
-                  Tau = Tau, R = R, delta = delta, data = dat, outcome.model = outcome.model, var = var)},
-      error = function(e) {
-        message("Error at replication ", rep.i, ": ", e$message) 
-        NULL  # Return NA or another placeholder value
-      })
-    if (is.null(est)) next
-    if (!is.null(est$trace)) {
-      log_output <- c(log_output,
-                      "Optimization Trace:", est$trace)
-    }
-
-    #est.values[rep.i,] <<- est.val[rep.i,] <- unlist(est$par)
-    #colnames(est.values) <<- colnames(est.val) <- names(unlist(est$par))
-    naive.est.values[rep.i,] <<- naive.est.val[rep.i,] <- unlist(est$naive[,"Estimate"])
-    colnames(naive.est.values) <<- colnames(naive.est.val) <- names(unlist(est$naive[,"Estimate"]))
-    cc.est.values[rep.i,] <<- cc.est.val[rep.i,] <- unlist(est$cc[,"Estimate"])
-    colnames(cc.est.values) <<- colnames(cc.est.val) <- names(unlist(est$cc[,"Estimate"]))
-    
-    log_output <- c(log_output,
-                    #"Estimates:", capture.output(print(est.val[rep.i,])),
-                    "Naive Estimates:", capture.output(print(naive.est.val[rep.i,])),
-                    "Complete Case Estimates:", capture.output(print(cc.est.val[rep.i,])),"\n")
-    
-    if (save.iter) {
-      cat(log_output, file = log_file, sep = "\n", append = TRUE)
-    } else {
-      cat(log_output, sep = "\n")
-    }
-    
-    if(var){
-      naive.est.se.values[rep.i,] <<- naive.est.se.val[rep.i,] <- unlist(est$naive[,"Std. Error"])
-      cc.est.se.values[rep.i,] <<- cc.est.se.val[rep.i,] <- unlist(est$cc[,"Std. Error"])
-      
-      #colnames(est.se.values) <<- colnames(est.se.val) <- names(unlist(est$par))
-      #colnames(est.se.inv.values) <<- colnames(est.se.inv.val) <- names(unlist(est$par))
-      colnames(naive.est.se.values) <<- colnames(naive.est.se.val) <- names(unlist(est$naive[,"Estimate"]))
-      colnames(cc.est.se.values) <<- colnames(cc.est.se.val) <- names(unlist(est$cc[,"Estimate"]))
-      
-      #est.se.values[rep.i,] <<- est.se.val[rep.i,] <- sqrt(diag(est.cov.mat[,,rep.i] <- est$variance$stacked.v.est))
-      #est.se.inv.values[rep.i,] <<- est.se.inv.val[rep.i,] <- sqrt(diag(est.cov.inv.mat[,,rep.i] <- -est$variance$G.tilde.inv))
-      
-      #CI.est[rep.i,] <<- ci.est[rep.i,] <- CI(est.val[rep.i,], est.se.val[rep.i,], alpha, unlist(par))
-      #CI.est.inv[rep.i,] <<- ci.est.inv[rep.i,] <- CI(est.val[rep.i,], est.se.inv.val[rep.i,], alpha, unlist(par))
-      CI.naive[rep.i,] <<- ci.naive[rep.i,] <- CI(naive.est.val[rep.i,], naive.est.se.val[rep.i,], alpha, unlist(par$a))
-      CI.cc[rep.i,] <<- ci.cc[rep.i,] <- CI(cc.est.val[rep.i,], cc.est.se.val[rep.i,], alpha, 
-                                            c(unlist(par$c)[1:(k-1)],unlist(par$e),unlist(par$c)[k:length(par$c)]))
-    }
-    rep.i <- rep.i + 1
-    
-    save.image(paste("Simulation-Environment-", timestamp, "-rep=", replications,
-                     "-n=", n, "-v.model=", outcome.model, ".RData", sep=""))
-    cat("\n----------------------------------------------\n")
-  }
-  
-  #summary.table.est <- summary.sim(est.val, unlist(par), est.se.val, ci.est, est.se.inv.val, ci.est.inv)
-  summary.table.naive <- summary.sim(naive.est.val, unlist(par$a), naive.est.se.val, ci.naive)
-  summary.table.cc <- summary.sim(cc.est.val, c(unlist(par$c)[1:(k-1)],unlist(par$e),unlist(par$c)[k:length(par$c)]), cc.est.se.val, ci.cc)
-  
-  if (save.iter) {
-    cat("\n========== Simulation Summary ==========\n", file = log_file, append = TRUE)
-    cat(paste("Total failed replications:", replication.errors, "\n"), file = log_file, append = TRUE)
-    cat("========================================\n", file = log_file, append = TRUE)
-    
-    write_out <- function(timestamp, data, name) {
-      file_conn <- file(paste0("Simulation-", name, "-", timestamp, "-rep=", replications,
-                               "-n=", n, "-v.model=", outcome.model, ".txt"), "w")
-      suppressWarnings(
-        write.table(data, file = file_conn, sep = "\t", na = "", row.names = TRUE, col.names = TRUE, append = TRUE)
-      )
-      close(file_conn)
-    }
-    
-    write_out(timestamp, est.val, "est.vals")
-    write_out(timestamp, naive.est.val, "naive.est.vals")
-    write_out(timestamp, cc.est.val, "cc.est.vals")
-    if(var){
-      write_out(timestamp, est.se.val, "est.se.vals")
-      write_out(timestamp, naive.est.se.val, "naive.est.se.val")
-      write_out(timestamp, cc.est.se.val, "cc.est.se.val")
-      write_out(timestamp, est.se.inv.val, "est.se.inv.val")
-      write_out(timestamp, ci.est, "ci.est")
-    }
-    write_out(timestamp, summary.table.est, "summary.table.est")
-    write_out(timestamp, summary.table.naive, "summary.table.naive")
-    write_out(timestamp, summary.table.cc, "summary.table.cc")
-    
-    save.image(paste("Simulation-Environment-", timestamp, "-rep=", replications,
-                     "-n=", n, "-v.model=", outcome.model, ".RData", sep=""))
-  }
-  
-  if(var){
-    return(list(summary.table.est = summary.table.est, summary.table.naive = summary.table.naive, summary.table.cc = summary.table.cc,
-                true.params = par, est.values = est.val, 
-                est.se.values = est.se.val, est.se.inv.values = est.se.inv.val,
-                est.cov.mat = est.cov.mat, est.cov.inv.mat = est.cov.inv.mat,
-                CI.est = ci.est, CI.est.inv = ci.est.inv,
-                naive.est.values = naive.est.val, cc.est.values = cc.est.val,
-                naive.est.se.values = naive.est.se.val, cc.est.se.values = cc.est.se.val,
-                CI.naive = ci.naive, CI.cc = ci.cc,
-                seed = seeds))
-  }
-  return(list(summary.table.est = NULL, summary.table.naive = summary.table.naive, summary.table.cc = summary.table.cc,
-              true.params = par, est.values = est.val,
-              naive.est.values = naive.est.val, cc.est.values = cc.est.val,
-              seed = seeds))
-}
-
