@@ -33,14 +33,16 @@ core_files <- c(
   "initialization.R",         # naive + complete-case starting values
   "variance.R",               # sandwich variance
   "ordcure.R",                # exported driver
-  "gen_data.R"                # simulation data generator
+  "gen_data.R",               # simulation data generator
+  "methods.R"
 )
 invisible(lapply(file.path("R", core_files), source))
 
 ## simulation drivers (analysis side)
 sim_files <- c(
   "simulation_utils.R",
-  "run_simulation.R"
+  "run_simulation.R",
+  "plots.R"
 )
 invisible(lapply(file.path("analysis", sim_files), source))
 

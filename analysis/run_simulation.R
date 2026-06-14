@@ -64,6 +64,12 @@ run_simulation <- function(
   true.a  <- unlist(par$a)
   true.cc <- c(unlist(par$c)[1:(k - 1)], unlist(par$e), unlist(par$c)[k:length(par$c)])
   
+  ## name the columns so the result is self-describing (used by plot())
+  colnames(est.val) <- colnames(est.se) <- colnames(est.se.i) <-
+    colnames(ci.est) <- colnames(ci.est.i) <- names(unlist(par))
+  colnames(naive.val) <- colnames(naive.se) <- colnames(ci.naive) <- names(true.a)
+  colnames(cc.val)    <- colnames(cc.se)    <- colnames(ci.cc)    <- names(true.cc)
+  
   ## ---- replication loop -----------------------------------
   for (i in seq_len(replications)) {
     
@@ -123,6 +129,8 @@ run_simulation <- function(
     success        = success,
     n_replications = replications,
     n_success      = n_ok,
+    n              = n,
+    outcome.model  = outcome.model,
     true.params    = par,
     est.values       = sub(est.val),
     naive.est.values = sub(naive.val),
@@ -161,5 +169,6 @@ run_simulation <- function(
     ci  = if (var) sub(ci.cc) else NULL
   )
   
+  class(out) <- "ordcure_sim"
   out
 }

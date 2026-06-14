@@ -171,10 +171,30 @@ ordcure <- function(
   )
   
   ## ---- stage 2: ordinal pseudo-likelihood ----
-  log_step("stage-2 optimization")
+  log_step("second stage (ordinal likelihood)")
+  
+  ## When verbose, wrap the objective so progress is reported via message()
+  ## (consistent with the EM output); optim's own trace prints to stdout in
+  ## a different style. A new line is emitted whenever the optimizer finds a
+  ## lower negative log-likelihood.
+  obj_fn <- negloglik_stage2
+  if (verbose) {
+    .iter <- 0L
+    .best <- Inf
+    obj_fn <- function(par, ...) {
+      val <- negloglik_stage2(par, ...)
+      if (is.finite(val) && val < .best) {
+        .best <<- val
+        .iter <<- .iter + 1L
+        message("iter=", .iter, " log.L=", -val)
+      }
+      val
+    }
+  }
+  
   opt <- optim(
     par           = init$par,
-    fn            = negloglik_stage2,
+    fn            = obj_fn,
     weights       = stage1$weights,
     k             = k,
     lengths       = init$lengths,
@@ -216,7 +236,18 @@ ordcure <- function(
     opt         = opt,
     first.stage = stage1,
     naive       = nc$naive,
-    cc          = nc$cc
+    cc          = nc$cc,
+    call          = match.call(),
+    outcome.model = outcome.model,
+    k             = k,
+    nobs          = nrow(data),
+    lengths       = init$lengths,
+    ylevels       = levels(data[[all.vars(formula.a)[1]]]),
+    formulas      = list(survform = survform, cureform = cureform,
+                         formula.a = formula.a, formula.e = formula.e,
+                         formula.b = formula.b, formula.c = formula.c),
+    vars          = list(Tau = Tau, R = R, delta = delta,
+                         response = all.vars(formula.a)[1])
   )
   
   ## ---- optional sandwich variance ----

@@ -40,10 +40,9 @@ true.params <- list(
   Tau.shape = T.shape,
   Tau.scale = T.scale,
   a = c(V.alpha0, "V.alpha.R" = V.alpha.R, V.alphaZ),
-  e = c(V.etaZ),
-  b = c(V.beta0, "V.beta.R" = V.beta.R),
+  e = c("V.eta.R" = V.eta.R, V.etaZ),
+  b = c(V.beta0),
   c = c(V.gamma0,
-        "V.gamma.R"     = V.gamma.R,
         "V.gamma.Tau"   = V.gamma.T,
         "V.gamma.R:Tau" = V.gamma.TR)
 )
@@ -51,17 +50,17 @@ true.params <- list(
 ## ---- simulation settings --------------------------------
 
 n            <- 2000
-replications <- 2
+replications <- 400
 alpha        <- 0.05
-outcome.model <- "ACAT"   # "PO" or "ACAT"
+outcome.model <- "PO"   # "PO" or "ACAT"
 
 ## model formulas
 cureform  <- delta ~ Z1 + Z2
 survform  <- Tau   ~ Z1 + Z2
 formula.a <- V ~ R + Z1 + Z2
-formula.e <- V ~ Z1 + Z2
-formula.b <- V ~ R
-formula.c <- V ~ R + Tau + R:Tau
+formula.e <- V ~ R + Z1 + Z2
+formula.b <- V ~ 1
+formula.c <- V ~ Tau + R:Tau
 
 ## ---- run ------------------------------------------------
 
@@ -93,6 +92,10 @@ sim$summary.table.est
 sim$summary.table.naive
 
 sim$summary.table.cc
+
+plot(sim, type = "bias", se = "sandwich") # bias + 95% CI (sandwich variance estimator), the default
+plot(sim, type = "bias", se = "inv")      # bias + 95% CI (inverse-information variance estimator)
+plot(sim, type = "coverage")              # empirical coverage
 
 ## ---- save (optional) ------------------------------------
 # saveRDS(sim, file = "results/simulation_main.rds")
