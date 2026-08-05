@@ -167,8 +167,8 @@ plots/
 
 ---
 
-## Citation
+## Written By
 
-Ziv, S. (2026). *Ordinal Outcome Regression with Censored Covariates in the Presence of a Cured Fraction.* MSc thesis, Department of Statistics, University of Haifa. Advisor: Bella Vakulenko-Lagun. Joint work with M. B. Millis and H. K. W. Kim (International Perthes' Study Group).
+Sahar Ziv, for *Ordinal Outcome Regression with Censored Covariates in the Presence of a Cured Fraction.* MSc thesis, Department of Statistics, University of Haifa. Advisor: Bella Vakulenko-Lagun. Joint work with M. B. Millis and H. K. W. Kim (International Perthes' Study Group).
 
 With thanks to the International Perthes' Study Group and the study participants. Supported by the Israel Science Foundation (grant 1219/23).
